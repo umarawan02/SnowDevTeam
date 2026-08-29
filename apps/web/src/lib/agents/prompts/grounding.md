@@ -101,11 +101,24 @@ code. Violating any of these fails `now-sdk build`, which blocks deploy.
 - **Template-literal interpolation only works in `ah_subject` and `log_message`.**
   In `message`, `ah_body`, and anywhere inside `TemplateValue({...})`, a
   `${...}` is written literally — pass the data pill directly as the value there.
-- `askForApproval` → copy the `approvalRules` shape from the official example
-  **verbatim**: `wfa.approvalRules({ conditionType: 'AND', ruleSets: [{ action:
-  'ApprovesRejects', conditionType: 'AND', rules: [[{ ruleType: 'Any', users:
-  [<userPill>], groups: [], manual: false }]] }] })`. Both `conditionType`s are
-  `'AND'`.
+- `askForApproval` → the **exact** `approvalRules` shape (from the SDK type
+  defs — the prose docs are inconsistent, this is authoritative):
+
+  ```typescript
+  approval_conditions: wfa.approvalRules({
+    conditionType: 'OR',                         // outer: ALWAYS 'OR'
+    ruleSets: [{
+      action: 'ApprovesRejects',                 // 'Approves' | 'Rejects' | 'ApprovesRejects'
+      conditionType: 'AND',                       // inner: ALWAYS 'AND'
+      rules: [[{                                  // note the double array [[ ]]
+        ruleType: 'Any',                          // camelCase: 'Any' | 'All' | 'Res' | 'Count' | 'Percent'
+        users: [wfa.dataPill(params.trigger.request_item.requested_for.manager, 'reference')],
+        groups: [],
+        manual: false,
+      }]],
+    }],
+  })
+  ```
 - Exactly one `wfa.trigger(...)` per flow. If a flow callback names `(params)`
   but never uses it, the SDK errors (`TS6133`) — use it or drop the parameter.
 - Email-subject/body pills use type `'string_full_utf8'`, not `'string'`.
@@ -174,6 +187,28 @@ Now.ref('sys_hub_flow', 'a1b2c3…')
 // a record defined elsewhere in THIS project: import the exported variable and
 // pass it directly (or `variable.$id` where a string identifier is required).
 ```
+
+- To use a project record's sys_id inside an **encoded-query string** (a
+  notification `condition`, a business-rule `condition`), interpolate
+  **`${myItem.$id}`** — **not** `${myItem.sys_id}` (`.sys_id` does not exist on
+  the constructor's return type).
+
+## Reading catalog variables server-side (business rule / script include)
+
+The `@servicenow/glide` types don't know your custom variables, so
+`current.variables.my_var` fails to typecheck. Use **`getValue` with a dot-walk
+string**: `current.getValue('variables.guest_account_username')`. Same for a
+looked-up RITM: `ritm.getValue('variables.<name>')`.
+
+## Catalog item constructor — MVP constraints
+
+- Do **not** set `deliveryTime` / `fulfillmentTime` with `Duration({...})` — the
+  build fails (`Failed to cast DurationShape to ObjectShape`). Omit these props
+  for the MVP.
+- `$id: Now.ID['…']`, `name`, `shortDescription`, `description`, `active`,
+  `category` (`Now.ref('sc_category', {...})` or an imported category record),
+  `catalogs`, `availableFor: [userCriteriaRecord]`, `variables: { … }`. No
+  `roles`, no `workflow`, no `executionPlan`.
 
 ## Server-side scripts — modules vs `Now.include`
 
