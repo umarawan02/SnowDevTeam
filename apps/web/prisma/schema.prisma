@@ -1,0 +1,62 @@
+// Prisma schema for the AI ServiceNow delivery-team MVP.
+// Docs: https://pris.ly/d/prisma-schema
+//
+// Status / role / artifact-type values are stored as plain strings.
+// The allowed value sets live in src/lib/constants.ts (single source of truth,
+// imported by the pipeline orchestration in Phase 1).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Ticket {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  // PENDING | RUNNING | READY_FOR_REVIEW | FAILED | DEPLOYED | REJECTED
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps     AgentStep[]
+  artifacts Artifact[]
+}
+
+model AgentStep {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // BA | ARCHITECT | SENIOR_DEV | DEVELOPER | QA
+  role  String
+  order Int
+  // PENDING | RUNNING | COMPLETE | FAILED
+  status String @default("PENDING")
+
+  output String?
+  error  String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([ticketId, order])
+}
+
+model Artifact {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // REQUIREMENTS | DESIGN | TASK_LIST | CODE | TEST_PLAN | QA_REPORT | DEPLOY_LOG | DEPLOY_VERIFICATION
+  type    String
+  content String
+
+  createdAt DateTime @default(now())
+}

@@ -1,0 +1,18 @@
+{
+  "name": "snow-dev-team",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-staffed ServiceNow delivery team — MVP",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=20.18.0",
+    "pnpm": ">=10.8.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "db:migrate": "pnpm --filter web exec prisma migrate dev",
+    "db:studio": "pnpm --filter web exec prisma studio",
+    "sn:auth:list": "cd servicenow/delivery-app && npx @servicenow/sdk auth --list"
+  }
+}

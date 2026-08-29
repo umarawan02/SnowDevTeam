@@ -1,0 +1,20 @@
+# The ServiceNow SDK bundles native addons (@napi-rs/keyring, libxmljs2, @swc/core)
+# whose platform binaries resolve via a flat node_modules layout. pnpm's default
+# isolated linker breaks that ("Cannot find native binding"), so hoist workspace-wide.
+nodeLinker: hoisted
+
+packages:
+  - "apps/*"
+  - "servicenow/*"
+
+allowBuilds:
+  "@prisma/engines": true
+  "@prisma/client": true
+  prisma: true
+  esbuild: true
+  msgpackr-extract: true
+  "@parcel/watcher": true
+  "@swc/core": true
+  libxmljs2: true
+  sharp: false
+  unrs-resolver: false

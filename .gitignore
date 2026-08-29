@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# env / secrets
+.env
+.env.local
+apps/web/.env
+apps/web/.env.local
+
+# next.js
+.next/
+apps/web/.next/
+out/
+
+# prisma / sqlite
+**/dev.db
+**/dev.db-journal
+**/*.db
+**/*.db-journal
+
+# build output
+dist/
+build/
+
+# now-sdk: stored instance credentials + build/pack output
+**/.now-sdk/
+servicenow/**/dist/
+servicenow/**/target/
+servicenow/**/.now/
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

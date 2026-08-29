@@ -1,0 +1,6 @@
+{
+    "scope": "x_1460392_delivery",
+    "scopeId": "f53ca6b11fdb4e81af25056bdf0f44ea",
+    "name": "AI Delivery App",
+    "tsconfigPath": "./src/server/tsconfig.json"
+}
