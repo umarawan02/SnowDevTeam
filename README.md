@@ -5,7 +5,8 @@ Developer → Developer → QA) turns a customer feature request into deployable
 ServiceNow artifacts. A human reviews every stage and must click **Approve**
 before anything is built and deployed to a real ServiceNow instance.
 
-Status: **Phase 0 (setup)** — see `BUILD_PROMTP.md` for the full phase plan.
+Status: **Phase 1 complete** (agent pipeline). Phase 2 next (review UI).
+See `BUILD_PROMTP.md` for the full phase plan.
 
 ## Layout (pnpm workspace monorepo)
 
@@ -33,6 +34,14 @@ pnpm install                       # install all workspaces
 pnpm dev                           # run the Next.js app (apps/web) on :3000
 pnpm --filter web db:migrate       # apply a new Prisma migration
 pnpm --filter web db:studio        # browse the DB
+
+# Agent pipeline (Phase 1) — needs ANTHROPIC_API_KEY in the repo-root .env
+pnpm --filter web pipeline                         # run the laptop-request example end to end
+pnpm --filter web pipeline "Title" "Description"    # run a custom request
+pnpm --filter web pipeline -- --resume <ticketId>  # rerun only the failed/pending stages
+# API: POST /api/tickets {title,description} kicks off the pipeline (fire-and-forget);
+#      GET /api/tickets and GET /api/tickets/:id for status + artifacts.
+# A full 5-stage run takes ~15-25 min and costs roughly $0.30-1.00 on claude-sonnet-5.
 
 # ServiceNow SDK (run inside servicenow/delivery-app)
 pnpm exec now-sdk auth --list
