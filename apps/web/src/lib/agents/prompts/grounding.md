@@ -136,11 +136,14 @@ code. Violating any of these fails `now-sdk build`, which blocks deploy.
 | `sendNotification` (template) | `record`, `notification` (a `sysevent_email_action` record — `lookUpRecord` it by `name`). Recipients/subject/body live on the template, not here. | — |
 | `askForApproval` | `record`, `table`, `approval_reason`, `approval_conditions: wfa.approvalRules({...})` | `approval_state` (type `'choice'`) |
 | `getCatalogVariables` | `requested_item`, `template_catalog_item: \`${item}\``, `catalog_variables?: [...]` | none (side-effect) |
-| `createCatalogTask` | **all `ah_`-prefixed:** `ah_requested_item`, `ah_short_description`, `ah_fields: TemplateValue({...})`, `ah_wait: false`, plus `template_catalog_item`, `catalog_variables` | `task["Catalog Task"]` (bracket notation — has a space) |
+| `createCatalogTask` | `ah_requested_item`, `ah_short_description`, `ah_fields: TemplateValue({...})`, `ah_wait: false`. **Omit `catalog_variables` and `template_catalog_item`** — the sc_task inherits the RITM's variables automatically and the SDK's `catalog_variables` handling rejects the property refs (`TS211`). | `task["Catalog Task"]` (bracket notation — has a space) |
 
 If a param isn't in this table and you're not certain, read the action's section
 in `wfa-flow-actions-guide` — do not invent `to`/`subject`/`body`/`table_name`
 where `ah_to`/`ah_subject`/`ah_body`/`table` is required.
+
+**`approvalRules` outer `conditionType` is `'OR'` — never `'AND'`.** This is the
+single most-repeated mistake. Copy the snippet in the Flows section exactly.
 
 ### Catalog fulfillment — the SDK-idiomatic pattern (do NOT fight this)
 
