@@ -105,7 +105,48 @@ h1.page-h { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.015em; margi
 }
 .btn:hover { filter: brightness(1.06); }
 .btn:disabled { opacity: 0.55; cursor: default; filter: none; }
+.btn.ghost { background: transparent; color: var(--ink-soft); border-color: var(--border-strong); }
+.btn.ghost:hover { color: var(--ink); border-color: var(--ink-faint); filter: none; }
 .formerr { color: var(--crit); font-size: 13px; margin-top: 10px; }
+
+/* ---------- review gate ---------- */
+.gate {
+  background: var(--surface); border: 1px solid var(--accent);
+  border-radius: 10px; padding: 16px 18px; margin-bottom: 22px; box-shadow: var(--shadow);
+}
+.gate-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+.gate-head strong { font-size: 13px; }
+.gate-head span { font-size: 12.5px; color: var(--ink-soft); }
+.gate-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gate-q { font-size: 13px; color: var(--ink); font-weight: 500; }
+.gate-reject { display: flex; flex-direction: column; gap: 8px; }
+.gate-reject label { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-soft); }
+.gate-reject textarea {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 11px;
+  min-height: 72px; resize: vertical;
+}
+.gate-reject textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* ---------- deploy banner + rejection note ---------- */
+.deploybanner {
+  display: flex; align-items: center; gap: 9px; padding: 11px 16px; border-radius: 10px;
+  font-size: 13px; font-weight: 500; margin-bottom: 22px; border: 1px solid transparent;
+}
+.deploybanner .pdot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.deploybanner.idle { background: color-mix(in srgb, var(--idle) 12%, var(--surface)); border-color: color-mix(in srgb, var(--idle) 30%, transparent); color: var(--idle); }
+.deploybanner.ok { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); border-color: color-mix(in srgb, var(--ok) 32%, transparent); color: var(--ok); }
+.deploybanner.crit { background: color-mix(in srgb, var(--crit) 12%, var(--surface)); border-color: color-mix(in srgb, var(--crit) 32%, transparent); color: var(--crit); }
+@media (prefers-reduced-motion: no-preference) {
+  .deploybanner.idle .pdot { animation: pulse 1.4s ease-in-out infinite; }
+}
+.notecard {
+  background: color-mix(in srgb, var(--crit) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--crit) 28%, transparent);
+  border-radius: 10px; padding: 14px 16px; margin-bottom: 22px; font-size: 13.5px;
+}
+.notecard .eh { font-weight: 600; color: var(--crit); margin-bottom: 4px; }
+.notecard p { color: var(--ink-soft); white-space: pre-wrap; }
 
 /* ---------- ticket list ---------- */
 .tlist { display: flex; flex-direction: column; }

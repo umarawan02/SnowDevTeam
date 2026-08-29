@@ -18,8 +18,10 @@ model Ticket {
   id          String   @id @default(cuid())
   title       String
   description String
-  // PENDING | RUNNING | READY_FOR_REVIEW | FAILED | DEPLOYED | REJECTED
+  // PENDING | RUNNING | READY_FOR_REVIEW | DEPLOYING | FAILED | DEPLOYED | REJECTED
   status      String   @default("PENDING")
+  // Required note captured when a reviewer rejects the ticket.
+  reviewNote  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

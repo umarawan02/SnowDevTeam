@@ -10,6 +10,7 @@ export const TICKET_STATUS_META: Record<TicketStatus, { label: string; tone: Ton
   PENDING: { label: "Pending", tone: "idle" },
   RUNNING: { label: "Running", tone: "idle" },
   READY_FOR_REVIEW: { label: "Ready for review", tone: "accent" },
+  DEPLOYING: { label: "Deploying", tone: "idle" },
   FAILED: { label: "Failed", tone: "crit" },
   DEPLOYED: { label: "Deployed", tone: "ok" },
   REJECTED: { label: "Rejected", tone: "crit" },
@@ -44,13 +45,15 @@ export const ARTIFACT_META: Record<ArtifactType, { label: string; role: AgentRol
   DEPLOY_VERIFICATION: { label: "Deploy Verification", role: "QA" },
 };
 
-/** Artifact types shown as pipeline-output tabs, in pipeline order. */
+/** Artifact types shown as tabs, in order (pipeline output, then deploy). */
 export const ARTIFACT_TAB_ORDER: ArtifactType[] = [
   "REQUIREMENTS",
   "DESIGN",
   "TASK_LIST",
   "CODE",
   "QA_REPORT",
+  "DEPLOY_LOG",
+  "DEPLOY_VERIFICATION",
 ];
 
 export const TERMINAL_TICKET_STATUSES: TicketStatus[] = [

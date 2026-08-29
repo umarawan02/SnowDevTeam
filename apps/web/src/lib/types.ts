@@ -25,6 +25,7 @@ export interface TicketJson {
   title: string;
   description: string;
   status: TicketStatus;
+  reviewNote: string | null;
   createdAt: string;
   updatedAt: string;
 }

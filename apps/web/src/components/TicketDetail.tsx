@@ -1,43 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { TICKET_STATUS_META, ROLE_META, isTerminal } from "@/lib/ui";
 import { parseQaVerdict } from "@/lib/pipeline/parse";
 import type { TicketDetailJson } from "@/lib/types";
 import { PipelineStrip } from "@/components/PipelineStrip";
 import { ArtifactTabs } from "@/components/ArtifactTabs";
+import { ReviewGate } from "@/components/ReviewGate";
 
 const POLL_MS = 3000;
 
-export function TicketDetail({ initial }: { initial: TicketDetailJson }) {
+export function TicketDetail({
+  initial,
+  instanceLabel,
+}: {
+  initial: TicketDetailJson;
+  instanceLabel: string;
+}) {
   const [ticket, setTicket] = useState<TicketDetailJson>(initial);
 
-  useEffect(() => {
-    if (isTerminal(ticket.status)) return;
-    let alive = true;
-    const tick = async () => {
-      try {
-        const res = await fetch(`/api/tickets/${ticket.id}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const { ticket: fresh } = (await res.json()) as { ticket: TicketDetailJson };
-        if (alive) setTicket(fresh);
-      } catch {
-        /* transient network error — keep polling */
-      }
-    };
-    const h = setInterval(tick, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(h);
-    };
-  }, [ticket.id, ticket.status]);
+  const refetch = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/tickets/${initial.id}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const { ticket: fresh } = (await res.json()) as { ticket: TicketDetailJson };
+      setTicket(fresh);
+    } catch {
+      /* transient — ignore */
+    }
+  }, [initial.id]);
 
-  const running = !isTerminal(ticket.status);
+  // Poll while the pipeline OR a deploy is in flight.
+  const live = !isTerminal(ticket.status) || ticket.status === "DEPLOYING";
+  useEffect(() => {
+    if (!live) return;
+    const h = setInterval(refetch, POLL_MS);
+    return () => clearInterval(h);
+  }, [live, refetch]);
+
   const meta = TICKET_STATUS_META[ticket.status];
   const failedStep = ticket.steps.find((s) => s.status === "FAILED");
   const qaArtifact = ticket.artifacts.find((a) => a.type === "QA_REPORT");
   const verdict = qaArtifact ? parseQaVerdict(qaArtifact.content) : null;
+  const hasDeployLog = ticket.artifacts.some((a) => a.type === "DEPLOY_LOG");
 
   return (
     <>
@@ -48,7 +54,7 @@ export function TicketDetail({ initial }: { initial: TicketDetailJson }) {
       <header className="dtl-head">
         <div className="row1">
           <h1>{ticket.title}</h1>
-          <span className={`pill ${meta.tone}${running ? " pulsing" : ""}`}>
+          <span className={`pill ${meta.tone}${live ? " pulsing" : ""}`}>
             <span className="pdot" />
             {meta.label}
           </span>
@@ -63,6 +69,32 @@ export function TicketDetail({ initial }: { initial: TicketDetailJson }) {
           <div className="eh">{ROLE_META[failedStep.role].label} stage failed</div>
           <pre>{failedStep.error ?? "No error message recorded."}</pre>
         </div>
+      )}
+
+      {ticket.status === "DEPLOYING" && (
+        <div className="deploybanner idle">
+          <span className="pdot" /> Building and deploying to {instanceLabel}…
+        </div>
+      )}
+      {ticket.status === "DEPLOYED" && (
+        <div className="deploybanner ok">
+          ✓ Deployed to {instanceLabel} — see the Deploy Verification tab.
+        </div>
+      )}
+      {ticket.status === "FAILED" && hasDeployLog && (
+        <div className="deploybanner crit">
+          Deploy failed — see the Deploy Log tab.
+        </div>
+      )}
+      {ticket.status === "REJECTED" && ticket.reviewNote && (
+        <div className="notecard">
+          <div className="eh">Rejected</div>
+          <p>{ticket.reviewNote}</p>
+        </div>
+      )}
+
+      {ticket.status === "READY_FOR_REVIEW" && (
+        <ReviewGate ticketId={ticket.id} instanceLabel={instanceLabel} onChanged={refetch} />
       )}
 
       {verdict && (
@@ -80,7 +112,7 @@ export function TicketDetail({ initial }: { initial: TicketDetailJson }) {
         </div>
       )}
 
-      <ArtifactTabs artifacts={ticket.artifacts} steps={ticket.steps} running={running} />
+      <ArtifactTabs artifacts={ticket.artifacts} steps={ticket.steps} running={live} />
     </>
   );
 }

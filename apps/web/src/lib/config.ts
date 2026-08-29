@@ -28,6 +28,8 @@ const Env = z.object({
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required (repo-root .env)"),
   ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5"),
   NOW_SDK_WORKSPACE: z.string().min(1).default("./servicenow/delivery-app"),
+  SN_AUTH_ALIAS: z.string().min(1).default("pdi"),
+  SN_INSTANCE_URL: z.string().optional(),
 });
 
 const parsed = Env.safeParse(process.env);

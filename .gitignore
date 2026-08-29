@@ -29,6 +29,14 @@ servicenow/**/dist/
 servicenow/**/target/
 servicenow/**/.now/
 
+# now-sdk: per-deploy generated app source (written from the DB artifact on Approve).
+# keys.ts stays tracked as the record-identity source of truth.
+servicenow/delivery-app/src/fluent/**
+!servicenow/delivery-app/src/fluent/generated/
+!servicenow/delivery-app/src/fluent/generated/**
+servicenow/delivery-app/src/server/**
+!servicenow/delivery-app/src/server/tsconfig.json
+
 # logs
 *.log
 npm-debug.log*
