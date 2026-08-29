@@ -13,7 +13,17 @@ export function createTicket(input: { title: string; description: string }) {
 export function listTickets() {
   return prisma.ticket.findMany({
     orderBy: { createdAt: "desc" },
-    select: { id: true, title: true, status: true, createdAt: true, updatedAt: true },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      steps: {
+        select: { role: true, status: true, order: true },
+        orderBy: { order: "asc" },
+      },
+    },
   });
 }
 

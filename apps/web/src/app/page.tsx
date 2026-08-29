@@ -1,69 +1,70 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Link from "next/link";
+import { AGENT_ROLES } from "@/lib/constants";
+import { listTickets } from "@/lib/tickets";
+import { NewRequestForm } from "@/components/NewRequestForm";
+import { ticketStatusMeta, isTerminal, relativeTime } from "@/lib/ui";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const tickets = await listTickets();
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="shell">
+      <header className="topbar">
+        <span className="brand">
+          <Link href="/">SnowDevTeam</Link>
+        </span>
+        <span className="tag">AI ServiceNow delivery</span>
+      </header>
+
+      <h1 className="page-h">Feature requests</h1>
+      <p className="sub">
+        Submit a request and a pipeline of agents — Business Analyst, Architect, Senior
+        Developer, Developer, QA — works it through to reviewable ServiceNow artifacts.
+        Nothing is deployed without an explicit human approval.
+      </p>
+
+      <NewRequestForm />
+
+      <section className="card" style={{ padding: "18px 22px" }}>
+        <div className="tlist">
+          <div className="lh">Requests ({tickets.length})</div>
+          {tickets.length === 0 && <p className="empty">No requests yet — submit one above.</p>}
+          {tickets.map((t) => {
+            const meta = ticketStatusMeta(t.status);
+            const running = !isTerminal(t.status);
+            return (
+              <div className="trow" key={t.id}>
+                <div className="tmain">
+                  <div className="ttitle">
+                    <Link href={`/tickets/${t.id}`}>{t.title}</Link>
+                  </div>
+                  <div className="tmeta">{relativeTime(t.createdAt)}</div>
+                </div>
+                <div className="minipipe" aria-hidden>
+                  {AGENT_ROLES.map((role) => {
+                    const s = t.steps.find((x) => x.role === role);
+                    const cls =
+                      s?.status === "COMPLETE"
+                        ? "ok"
+                        : s?.status === "FAILED"
+                          ? "crit"
+                          : s?.status === "RUNNING"
+                            ? "run"
+                            : "";
+                    return <span key={role} className={`minidot ${cls}`} />;
+                  })}
+                </div>
+                <span className={`pill ${meta.tone}${running ? " pulsing" : ""}`}>
+                  <span className="pdot" />
+                  {meta.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }
