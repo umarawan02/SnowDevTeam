@@ -6,7 +6,7 @@ import { NOW_SDK_CWD, REPO_ROOT } from "@/lib/config";
 
 const execFileAsync = promisify(execFile);
 
-const MAX_OUTPUT_CHARS = 15_000;
+const MAX_OUTPUT_CHARS = 28_000;
 
 function truncate(s: string): string {
   return s.length > MAX_OUTPUT_CHARS

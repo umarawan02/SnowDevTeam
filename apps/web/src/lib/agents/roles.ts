@@ -80,7 +80,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     label: "Developer",
     artifactType: ARTIFACT_TYPE.CODE,
     withTools: true,
-    maxTurns: 40,
+    maxTurns: 55,
     systemPrompt: SYSTEM_PROMPTS.DEVELOPER,
     buildUserPrompt: (ctx) =>
       `${request(ctx)}` +
