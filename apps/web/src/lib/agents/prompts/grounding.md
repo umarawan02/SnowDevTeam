@@ -65,7 +65,9 @@ code. Violating any of these fails `now-sdk build`, which blocks deploy.
 ### Catalog variables (`SingleLineTextVariable`, `MultiLineTextVariable`, `SelectBoxVariable`, `ReferenceVariable`, `DateVariable`, `CheckboxVariable`, `RequestedForVariable`)
 
 - There is **no `maxLength`** on any variable type — that is a `StringColumn`
-  property only. Use `validateRegex` for input constraints.
+  property only. `validateRegex` exists on `SingleLineTextVariable` but **not**
+  on `MultiLineTextVariable`. Don't put input-length limits on variables at all
+  for the MVP.
 - `mandatory: true` **cannot** coexist with `readOnly: true` or `hidden: true` on
   the same variable — the SDK rejects it. To get an auto-populated read-only
   field that must have a value, make it `mandatory` and enforce read-only with a
@@ -77,29 +79,62 @@ code. Violating any of these fails `now-sdk build`, which blocks deploy.
   `referenceTable` + `referenceQualCondition` (Reference), `useDynamicDefault` +
   `dependentQuestion` + `dotWalkPath`.
 
-### Flows — the declarative rules (`explain wfa-flow-guide` in full first)
+### Flows — the declarative rules (`explain wfa-flow-guide` + `wfa-flow-actions-guide` in full first)
 
-- **Every trigger-data or action-output reference must be wrapped in
-  `wfa.dataPill(expr, 'type')`.** Bare `params.trigger.x`,
-  `params.trigger.request_item.variables.y`, or `item.variables.z` in an action
-  parameter → `TS211: Datapill reference must be inside a wfa.dataPill call`.
-  Wrap **every** one: `wfa.dataPill(params.trigger.request_item.variables.y, 'string')`.
+- **Every trigger-data or action-output reference used in an action parameter or
+  a condition must be wrapped in `wfa.dataPill(expr, 'type')`.** Bare
+  `params.trigger.x` or `result.field` → `TS211: Datapill reference must be
+  inside a wfa.dataPill call`.
 - **Never assign a data pill to a `const`/`let`/`var`.** Use it directly in the
   action-parameter object. The one allowed capture is
   `const r = wfa.action(action.core.X, {$id}, {...})` to reference `r.output`
   later (itself wrapped: `wfa.dataPill(r.record, 'reference')`).
+- **`params.trigger.request_item` (serviceCatalog trigger) only dot-walks to
+  real `sc_req_item` columns / references:** `.request`, `.cat_item`,
+  `.requested_for`, `.opened_by`, `.state`, `.number`, `.sys_id`. **There is
+  `.variables.<name>` — accessing it fails to typecheck (`Property '<name>'
+  does not exist on type 'string | number'`).** The SDK does **not** let a flow
+  read an individual catalog-variable value. See "Catalog fulfillment" below.
 - **Conditions are template literals** with interpolated pills:
-  `` condition: `${wfa.dataPill(params.trigger.current.priority, 'string')}=1` ``.
+  `` condition: `${wfa.dataPill(approval.approval_state, 'choice')}=approved` ``.
   No `javascript:` expressions in `flowLogic.if/elseIf/else` conditions.
 - **Template-literal interpolation only works in `ah_subject` and `log_message`.**
   In `message`, `ah_body`, and anywhere inside `TemplateValue({...})`, a
   `${...}` is written literally — pass the data pill directly as the value there.
-- `approval_conditions: wfa.approvalRules({ conditionType: 'OR', ruleSets: [...] })`
-  — `conditionType` is **`'OR'`**, never `'AND'`.
+- `askForApproval` → copy the `approvalRules` shape from the official example
+  **verbatim**: `wfa.approvalRules({ conditionType: 'AND', ruleSets: [{ action:
+  'ApprovesRejects', conditionType: 'AND', rules: [[{ ruleType: 'Any', users:
+  [<userPill>], groups: [], manual: false }]] }] })`. Both `conditionType`s are
+  `'AND'`.
 - Exactly one `wfa.trigger(...)` per flow. If a flow callback names `(params)`
   but never uses it, the SDK errors (`TS6133`) — use it or drop the parameter.
-- Email-body pills use type `'string_full_utf8'`, not `'string'`.
+- Email-subject/body pills use type `'string_full_utf8'`, not `'string'`.
 - `Time.addDays()` / `Time.nowDateTime()` / `gs.daysAgoStart()` do **not** exist.
+
+### Catalog fulfillment — the SDK-idiomatic pattern (do NOT fight this)
+
+A flow **cannot read catalog-variable values**. So:
+
+- **Fulfillment work item = `action.core.createCatalogTask`** (`sc_task`). It
+  inherits the catalog variables automatically for the fulfiller to see; pass
+  `catalog_variables: [item.variables.a, item.variables.b]` to surface specific
+  ones. Do NOT create a custom table with one column per catalog variable and do
+  NOT try to populate columns from variables in the flow — that design is
+  impossible in Fluent.
+- Only introduce a **custom table** if the design needs structured state the
+  `sc_task`/RITM don't have (e.g. an expiry timestamp, a provisioned-account id).
+  Keep it to a handful of columns plus a reference back to `sc_req_item`. Never
+  mirror the form.
+- **Notifications** reference catalog variables in their **own** template with
+  `${variables.guest_email}` syntax (`EmailNotification` on `sc_req_item`
+  supports it) — not via the flow.
+- If server-side logic genuinely must read a variable value, do it in a
+  **business rule / script include** on `sc_req_item` using
+  `current.variables.<name>` — never in the declarative flow.
+- The flow's job is: `getCatalogVariables` → `askForApproval` →
+  `flowLogic.if` approved → `createCatalogTask` (+ optional minimal
+  `createRecord` on a small custom table, populated only from trigger dot-walks
+  and static values) → `updateRecord` to set RITM state.
 
 ### Server modules
 
