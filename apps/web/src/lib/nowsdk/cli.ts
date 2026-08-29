@@ -6,11 +6,13 @@ import { NOW_SDK_CWD, REPO_ROOT } from "@/lib/config";
 
 const execFileAsync = promisify(execFile);
 
-const MAX_OUTPUT_CHARS = 28_000;
+// Big enough for the longest `explain` topic (action-api ≈ 57 KB). `query` and
+// build/deploy logs pass a smaller cap so live data / logs can't blow context.
+const DEFAULT_MAX_CHARS = 64_000;
 
-function truncate(s: string): string {
-  return s.length > MAX_OUTPUT_CHARS
-    ? s.slice(0, MAX_OUTPUT_CHARS) + `\n… [truncated ${s.length - MAX_OUTPUT_CHARS} chars]`
+function truncate(s: string, max: number): string {
+  return s.length > max
+    ? s.slice(0, max) + `\n… [truncated ${s.length - max} chars]`
     : s;
 }
 
@@ -46,8 +48,9 @@ export interface NowSdkResult {
  */
 export async function runNowSdk(
   args: string[],
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; maxChars?: number } = {},
 ): Promise<NowSdkResult> {
+  const max = opts.maxChars ?? DEFAULT_MAX_CHARS;
   try {
     const { stdout, stderr } = await execFileAsync(
       process.execPath,
@@ -59,7 +62,7 @@ export async function runNowSdk(
         windowsHide: true,
       },
     );
-    return { stdout: truncate(stdout), stderr: truncate(stderr), code: 0 };
+    return { stdout: truncate(stdout, max), stderr: truncate(stderr, max), code: 0 };
   } catch (err) {
     const e = err as NodeJS.ErrnoException & {
       stdout?: string;
@@ -67,8 +70,8 @@ export async function runNowSdk(
       code?: number | string;
     };
     return {
-      stdout: truncate(e.stdout ?? ""),
-      stderr: truncate(e.stderr ?? String(e.message ?? e)),
+      stdout: truncate(e.stdout ?? "", max),
+      stderr: truncate(e.stderr ?? String(e.message ?? e), max),
       code: typeof e.code === "number" ? e.code : 1,
     };
   }

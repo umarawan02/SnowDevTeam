@@ -65,7 +65,7 @@ const queryTool = tool(
     const args = ["query", table, "-q", query, "--limit", "20", "-o", "json"];
     if (fields) args.push("-f", fields);
 
-    const { stdout, stderr, code } = await runNowSdk(args, { timeoutMs: 60_000 });
+    const { stdout, stderr, code } = await runNowSdk(args, { timeoutMs: 60_000, maxChars: 12_000 });
     if (code !== 0 && !stdout.trim()) {
       return {
         content: [{ type: "text", text: `query failed (exit ${code}):\n${stderr}` }],

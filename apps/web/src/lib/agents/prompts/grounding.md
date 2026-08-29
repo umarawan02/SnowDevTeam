@@ -38,8 +38,75 @@ export const x_1460392_delivery_request = Table({
 
 - The `Now` global (`Now.ID`, `Now.ref`, `Now.include`, `Now.attach`, `Now.del`)
   and the data helpers (`Duration`, `Time`, `TemplateValue`, `FieldList`) are
-  **injected globals — never import them**. Only import the constructors
-  (`Table`, `BusinessRule`, `Record`, column types, …) from `@servicenow/sdk/core`.
+  **injected globals — never import them**. Import metadata constructors
+  (`Table`, `BusinessRule`, `Record`, column types, `CatalogItem`, the
+  `*Variable` types, `CatalogUiPolicy`, `CatalogClientScript`, `UiPolicy`,
+  `UserCriteria`, `EmailNotification`, `Sla`, `Acl`, `Role`) from
+  `@servicenow/sdk/core`. Import flow constructs (`Flow`, `FlowStage`, `wfa`,
+  `trigger`, `action`) from `@servicenow/sdk/automation`.
+
+## Fluent authoring — hard rules (these break the build)
+
+The `.now.ts` transpiler **statically parses the AST** — it does not execute your
+code. Violating any of these fails `now-sdk build`, which blocks deploy.
+
+### Property values must be static
+
+- A property value is a **single string literal**, a **single template literal**,
+  a number/boolean, an imported Fluent record reference, `Now.ref(...)`,
+  `Now.include(...)`, `TemplateValue({...})`, `Duration({...})`, `Time({...})`,
+  or an object/array literal of those.
+- **Never** use `'a' + 'b'` string concatenation, a function call you wrote, a
+  ternary, or a local `const` as a value. `messageHtml: '<p>x</p>' + '<p>y</p>'`
+  → `TS303 Failed to parse property` / `TS213 Unsupported variable initializer`.
+  Put the whole HTML in one backtick template literal instead.
+- Don't declare helper functions or factories in a `.now.ts` file.
+
+### Catalog variables (`SingleLineTextVariable`, `MultiLineTextVariable`, `SelectBoxVariable`, `ReferenceVariable`, `DateVariable`, `CheckboxVariable`, `RequestedForVariable`)
+
+- There is **no `maxLength`** on any variable type — that is a `StringColumn`
+  property only. Use `validateRegex` for input constraints.
+- `mandatory: true` **cannot** coexist with `readOnly: true` or `hidden: true` on
+  the same variable — the SDK rejects it. To get an auto-populated read-only
+  field that must have a value, make it `mandatory` and enforce read-only with a
+  `CatalogUiPolicy` (`readOnly` action), not on the variable.
+- `dependentQuestion` takes the **string name** of the other variable (e.g.
+  `'requested_for'`), not the variable const.
+- Common real props: `question` (required), `mandatory`, `readOnly`, `hidden`,
+  `order`, `defaultValue`, `helpText`, `validateRegex`, `choices` (SelectBox),
+  `referenceTable` + `referenceQualCondition` (Reference), `useDynamicDefault` +
+  `dependentQuestion` + `dotWalkPath`.
+
+### Flows — the declarative rules (`explain wfa-flow-guide` in full first)
+
+- **Every trigger-data or action-output reference must be wrapped in
+  `wfa.dataPill(expr, 'type')`.** Bare `params.trigger.x`,
+  `params.trigger.request_item.variables.y`, or `item.variables.z` in an action
+  parameter → `TS211: Datapill reference must be inside a wfa.dataPill call`.
+  Wrap **every** one: `wfa.dataPill(params.trigger.request_item.variables.y, 'string')`.
+- **Never assign a data pill to a `const`/`let`/`var`.** Use it directly in the
+  action-parameter object. The one allowed capture is
+  `const r = wfa.action(action.core.X, {$id}, {...})` to reference `r.output`
+  later (itself wrapped: `wfa.dataPill(r.record, 'reference')`).
+- **Conditions are template literals** with interpolated pills:
+  `` condition: `${wfa.dataPill(params.trigger.current.priority, 'string')}=1` ``.
+  No `javascript:` expressions in `flowLogic.if/elseIf/else` conditions.
+- **Template-literal interpolation only works in `ah_subject` and `log_message`.**
+  In `message`, `ah_body`, and anywhere inside `TemplateValue({...})`, a
+  `${...}` is written literally — pass the data pill directly as the value there.
+- `approval_conditions: wfa.approvalRules({ conditionType: 'OR', ruleSets: [...] })`
+  — `conditionType` is **`'OR'`**, never `'AND'`.
+- Exactly one `wfa.trigger(...)` per flow. If a flow callback names `(params)`
+  but never uses it, the SDK errors (`TS6133`) — use it or drop the parameter.
+- Email-body pills use type `'string_full_utf8'`, not `'string'`.
+- `Time.addDays()` / `Time.nowDateTime()` / `gs.daysAgoStart()` do **not** exist.
+
+### Server modules
+
+- `src/server/**/*.ts` may import from `@servicenow/glide` and other
+  `src/server/` files **only** — importing from `src/fluent/**` fails with
+  `TS6059: not under rootDir`. Shared constants a flow needs go inline in the
+  `.now.ts`, not in a shared file under `src/fluent/`.
 
 ## Record identity — `Now.ID` and `keys.ts`
 

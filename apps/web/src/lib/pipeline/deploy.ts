@@ -105,7 +105,7 @@ export async function deployTicket(ticketId: string): Promise<DeployResult> {
       );
 
     // 1. build
-    const build = await runNowSdk(["build"], { timeoutMs: 180_000 });
+    const build = await runNowSdk(["build"], { timeoutMs: 180_000, maxChars: 24_000 });
     log += section(
       `now-sdk build  (exit ${build.code})`,
       [build.stdout, build.stderr].filter(Boolean).join("\n"),
@@ -117,6 +117,7 @@ export async function deployTicket(ticketId: string): Promise<DeployResult> {
     // 2. install (deploy)
     const install = await runNowSdk(["install", "--auth", config.SN_AUTH_ALIAS], {
       timeoutMs: 300_000,
+      maxChars: 24_000,
     });
     log += section(
       `now-sdk install --auth ${config.SN_AUTH_ALIAS}  (exit ${install.code})`,

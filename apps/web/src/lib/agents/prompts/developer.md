@@ -87,3 +87,26 @@ order:
 - Match the task list and the design. If `explain` reveals the design is
   impossible as specified, implement the closest correct version and add one
   prose line noting the deviation.
+
+## Build-breaker checklist — your code is transpiled, not run
+
+The Appendix "Fluent authoring — hard rules" section lists the exact syntax that
+fails `now-sdk build`. These are the ones that bite every time — check each file
+against them before you emit it:
+
+- **No `'a' + 'b'` string concatenation in any property value.** One string
+  literal or one backtick template literal. Multi-line HTML → one backtick string.
+- **No `maxLength` on catalog variables** (StringColumn only). No `mandatory`
+  together with `readOnly`/`hidden` on a variable.
+- **Flows:** every `params.trigger.*` and every action-output reference used in an
+  action parameter is wrapped in `wfa.dataPill(expr, 'type')` — no bare
+  references, no `.variables.x` passed raw. Never store a data pill in a
+  `const`/`let`/`var`. `wfa.approvalRules({ conditionType: 'OR', … })`. `${…}`
+  interpolates only in `ah_subject` / `log_message`.
+- **Server modules** (`src/server/**`) never import from `src/fluent/**`.
+- **No `// verify later` comments** — if you cannot verify a construct with
+  `explain`, implement the closest verified alternative and flag the gap in one
+  prose line.
+
+Before emitting the flow file(s), you MUST have read `wfa-flow-guide` **and**
+`wfa-flow-actions-guide` in full this session.

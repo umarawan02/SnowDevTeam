@@ -14,7 +14,7 @@ interface QueryOutcome {
 async function scopeQuery(table: string, query: string, fields: string): Promise<QueryOutcome> {
   const { stdout, stderr, code } = await runNowSdk(
     ["query", table, "-q", query, "-f", fields, "--limit", "50", "-o", "json"],
-    { timeoutMs: 60_000 },
+    { timeoutMs: 60_000, maxChars: 12_000 },
   );
   const raw = (stdout || stderr).trim();
   try {
