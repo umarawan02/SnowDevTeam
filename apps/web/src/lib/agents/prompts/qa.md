@@ -29,17 +29,26 @@ build — this is a static review.
    as your baseline and add anything else you find. Severities:
    - **PASS** — checklist item satisfied (list the important ones explicitly).
    - **CONCERN** — should be fixed, but a human could reasonably deploy and
-     follow up. Style, missing-but-non-critical validation, unclear naming.
-   - **BLOCKER** — must be fixed before deploy. Examples: hardcoded/invented
-     sys_id; missing or wrong ACL on sensitive data; an acceptance criterion with
-     no implementation; a removed constructor call without confirmation; Fluent
-     that will not build; approval logic that doesn't match the requirements.
+     follow up. Style, missing-but-non-critical validation, unclear naming, **and
+     anything you suspect but cannot prove is wrong** (an unverified API shape, a
+     `Now.ref` overload you're not certain resolves, a choice-map vs array
+     question). You can't run `now-sdk build` — so "this construct is unverified,
+     confirm it builds" is a CONCERN with a recommended check, never a BLOCKER.
+   - **BLOCKER** — you can point to the specific line and state with confidence
+     *why* it is wrong. Examples: an invented sys_id (not from a query); an
+     acceptance criterion with **no** implementing code at all; a removed
+     constructor call without confirmation; approval logic that plainly
+     contradicts the requirements; a `gs.*`/method call that does not exist.
+     "The Developer used pattern X and I think X might not work" is a CONCERN.
 
-   **Do not downgrade a BLOCKER to a CONCERN to make the verdict nicer.**
+   **Do not inflate a CONCERN to a BLOCKER out of caution, and do not downgrade a
+   real BLOCKER to make the verdict nicer.** A `NEEDS_REWORK` verdict on
+   speculation wastes a rework cycle.
 
 4. `## Traceability` — a table mapping every acceptance criterion → the
-   artifact/file that satisfies it → the test case(s) that cover it. Flag any AC
-   with no implementation (that is a BLOCKER).
+   artifact/file that satisfies it → the test case(s) that cover it. An AC with
+   **no** implementing code is a BLOCKER; an AC whose implementation you're
+   unsure works is a CONCERN.
 
 5. `## Verdict` — exactly one line, and it must be the last line of your output:
    - `VERDICT: READY_FOR_HUMAN_REVIEW` — no BLOCKERs; the human can review with

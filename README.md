@@ -5,8 +5,11 @@ Developer → Developer → QA) turns a customer feature request into deployable
 ServiceNow artifacts. A human reviews every stage and must click **Approve**
 before anything is built and deployed to a real ServiceNow instance.
 
-Status: **Phase 1 complete** (agent pipeline). Phase 2 next (review UI).
-See `BUILD_PROMTP.md` for the full phase plan.
+Status: **MVP complete** — all 4 build phases done. Submitting a request in the
+browser runs the 5 agents, the human reviews every artifact, and clicking
+**Approve** builds + deploys a real catalog item and flow to the PDI (verified
+by a post-deploy query). See `BUILD_PROMTP.md` for the phase plan and
+`docs/phase4-validation.md` for the end-to-end validation write-up.
 
 ## Layout (pnpm workspace monorepo)
 
