@@ -670,9 +670,9 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; letter-spac
 .react-flow__handle { opacity: 0; }
 .react-flow__background { color: var(--border); }
 .react-flow__attribution {
-  background: transparent; font-size: 8px;
+  background: transparent !important; padding: 0 3px; margin: 0;
 }
-.react-flow__attribution a { color: var(--ink-faint); }
+.react-flow__attribution a { color: var(--ink-faint); font-size: 8px; opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) {
   .react-flow__edge.animated path { animation: none; }
 }
