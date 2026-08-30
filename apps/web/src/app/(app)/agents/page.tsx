@@ -1,13 +1,20 @@
 import Link from "next/link";
 import { getPersonas } from "@/lib/agents/personas";
 import { getDashboardMetrics } from "@/lib/metrics";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { canEditAgents } from "@/lib/auth/rbac";
 import { msLabel } from "@/lib/ui";
 import { PersonaAvatar } from "@/components/PersonaAvatar";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentsPage() {
-  const [personas, m] = await Promise.all([getPersonas(), getDashboardMetrics()]);
+  const [personas, m, user] = await Promise.all([
+    getPersonas(),
+    getDashboardMetrics(),
+    getCurrentUser(),
+  ]);
+  const editable = canEditAgents(user);
   const timing = new Map<string, (typeof m.stageTiming)[number]>(
     m.stageTiming.map((s) => [s.role, s]),
   );
@@ -57,11 +64,13 @@ export default async function AgentsPage() {
                   model
                 </span>
               </div>
-              <div className="foot">
-                <Link href={`/agents/${p.role.toLowerCase()}`} className="btn ghost sm">
-                  Edit profile
-                </Link>
-              </div>
+              {editable && (
+                <div className="foot">
+                  <Link href={`/agents/${p.role.toLowerCase()}`} className="btn ghost sm">
+                    Edit profile
+                  </Link>
+                </div>
+              )}
             </article>
           );
         })}

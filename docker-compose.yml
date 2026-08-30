@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: snowdevteam-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: snow
+      POSTGRES_PASSWORD: snow
+      POSTGRES_DB: snowdevteam
+    # 5432 on the host is already taken by another project — expose on 5433.
+    ports:
+      - "5433:5432"
+    volumes:
+      - snowdevteam_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snow -d snowdevteam"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  snowdevteam_pgdata:

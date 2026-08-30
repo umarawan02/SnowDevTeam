@@ -1,8 +1,10 @@
 import { IntakeWizard } from "@/components/intake/IntakeWizard";
+import { getCurrentUser } from "@/lib/auth/current-user";
 
 export const dynamic = "force-dynamic";
 
-export default function IntakePage() {
+export default async function IntakePage() {
+  const user = await getCurrentUser();
   return (
     <div className="page">
       <div className="pagehead">
@@ -14,7 +16,7 @@ export default function IntakePage() {
           </p>
         </div>
       </div>
-      <IntakeWizard />
+      <IntakeWizard defaultRequester={user?.name ?? user?.email ?? ""} />
     </div>
   );
 }

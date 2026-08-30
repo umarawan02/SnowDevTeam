@@ -6,6 +6,7 @@ export function createTicket(input: {
   requester?: string | null;
   priority?: string | null;
   category?: string | null;
+  createdById?: string | null;
 }) {
   return prisma.ticket.create({
     data: {
@@ -14,6 +15,7 @@ export function createTicket(input: {
       requester: input.requester ?? null,
       priority: input.priority ?? null,
       category: input.category ?? null,
+      createdById: input.createdById ?? null,
       // status defaults to PENDING
     },
   });

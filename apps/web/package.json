@@ -9,6 +9,7 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "pipeline": "tsx scripts/run-pipeline.mts",
     "deploy-dev": "tsx scripts/deploy-dev.mts",
@@ -20,13 +21,16 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@prisma/client": "6.19.3",
     "@xyflow/react": "^12.11.5",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
+    "jose": "^6.2.10",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -36,5 +40,8 @@
     "tsx": "^4.23.12",
     "typescript": "^5"
   },
-  "packageManager": "pnpm@11.24.0"
+  "packageManager": "pnpm@11.24.0",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
 }

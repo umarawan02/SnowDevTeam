@@ -46,6 +46,15 @@ export function IconAgents(p: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+export function IconUsers(p: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...p}>
+      <circle cx="8" cy="8" r="3" />
+      <path d="M2.5 20a5.5 5.5 0 0 1 11 0" />
+      <path d="M16 5.2a3 3 0 0 1 0 5.6M21.5 20a5.5 5.5 0 0 0-3.2-5" />
+    </svg>
+  );
+}
 export function IconSun(p: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base} {...p}>

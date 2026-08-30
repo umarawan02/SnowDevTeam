@@ -16,10 +16,12 @@ export function TicketDetail({
   initial,
   instanceLabel,
   personas,
+  canReview,
 }: {
   initial: TicketDetailJson;
   instanceLabel: string;
   personas: Record<string, PersonaJson>;
+  canReview: boolean;
 }) {
   const [ticket, setTicket] = useState<TicketDetailJson>(initial);
 
@@ -104,9 +106,20 @@ export function TicketDetail({
         </div>
       )}
 
-      {ticket.status === "READY_FOR_REVIEW" && (
-        <ReviewGate ticketId={ticket.id} instanceLabel={instanceLabel} onChanged={refetch} />
-      )}
+      {ticket.status === "READY_FOR_REVIEW" &&
+        (canReview ? (
+          <ReviewGate ticketId={ticket.id} instanceLabel={instanceLabel} onChanged={refetch} />
+        ) : (
+          <div className="gate gate-locked">
+            <div className="gate-head">
+              <strong>Waiting on a reviewer</strong>
+              <span>
+                This run is ready for review. Only reviewers and admins can approve or reject —
+                ask an admin to grant you the Reviewer role.
+              </span>
+            </div>
+          </div>
+        ))}
 
       {verdict && (
         <div className={`verdict ${verdict === "READY_FOR_HUMAN_REVIEW" ? "ready" : "rework"}`}>

@@ -1,13 +1,17 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { config } from "@/lib/config";
 import { getPersona, isAgentRole } from "@/lib/agents/personas";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { canEditAgents } from "@/lib/auth/rbac";
 import { AgentEditor } from "@/components/agents/AgentEditor";
 import type { PersonaJson } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentEditPage({ params }: { params: Promise<{ role: string }> }) {
+  if (!canEditAgents(await getCurrentUser())) redirect("/agents");
+
   const { role } = await params;
   const upper = role.toUpperCase();
   if (!isAgentRole(upper)) notFound();

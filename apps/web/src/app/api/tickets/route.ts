@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createTicket, listTickets } from "@/lib/tickets";
 import { runPipeline } from "@/lib/pipeline/run";
+import { requireUser, AuthError } from "@/lib/auth/current-user";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,14 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  let user;
+  try {
+    user = await requireUser();
+  } catch (e) {
+    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 401 });
+    throw e;
+  }
+
   let json: unknown;
   try {
     json = await req.json();
@@ -35,7 +44,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const { title, description, requester, priority, category, approvals, targetUsers } = parsed.data;
+  const { title, description, priority, category, approvals, targetUsers } = parsed.data;
+  const requester = parsed.data.requester || user.name || user.email;
 
   // Fold the structured intake answers into the description so the BA sees them,
   // and persist the queryable ones on the ticket.
@@ -55,6 +65,7 @@ export async function POST(req: Request) {
     requester: requester ?? null,
     priority: priority ?? null,
     category: category ?? null,
+    createdById: user.id,
   });
 
   // Fire-and-forget: the pipeline runs in the background of this long-lived Node

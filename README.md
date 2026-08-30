@@ -20,15 +20,33 @@ plan and `docs/phase4-validation.md` for the end-to-end validation write-up.
 | `/board` | Live status kanban — cards move across columns as the pipeline runs. |
 | `/agents`, `/agents/[role]` | The 5 AI personas (`AgentPersona` table). Rename them and rewrite their profile + "voice" — the name and voice are threaded into that agent's system prompt on every run. |
 | `/tickets/[id]` | Run detail: the pipeline as a live node graph, the review gate, a "what gets built" flow diagram parsed from the generated code, and every artifact. |
+| `/login` | Split-screen sign-in (email + password). |
+| `/settings/users` | Admin — invite users, set roles, activate/deactivate. |
 
 Glassmorphic design system in `src/app/globals.css` (light + dark + toggle);
 `@xyflow/react` for the flow diagrams; charts are hand-rolled SVG.
+
+### Auth & roles
+
+Every route requires a signed-in user (`src/middleware.ts`). Sessions are a signed
+JWT (`jose`) in an httpOnly cookie; passwords are bcrypt hashes. Auth code lives in
+`src/lib/auth/`.
+
+| Role | Can |
+|---|---|
+| **Admin** | everything + user management + edit agent personas |
+| **Reviewer** | approve / reject at the review gate, submit, view |
+| **Requester** | submit requests, view runs — no approve/reject |
+
+Accounts are invite-only: the seeded admin (`AUTH_ADMIN_*` in `apps/web/.env`)
+creates users from `/settings/users`.
 
 ## Layout (pnpm workspace monorepo)
 
 | Path | What |
 |---|---|
-| `apps/web` | Next.js 16 (App Router, TS) + Prisma 6 / SQLite. The review UI + API. |
+| `apps/web` | Next.js 16 (App Router, TS) + Prisma 6 / PostgreSQL. The review UI + API. |
+| `docker-compose.yml` | PostgreSQL 16 for the app (host port **5433**). `docker compose up -d`. |
 | `servicenow/delivery-app` | now-sdk (ServiceNow Fluent) project. Deploy target for generated code. |
 | `docs/` | Cached now-sdk orientation + CLI reference (grounding for later agent prompts). |
 | `.env` | Runtime config (Anthropic key, PDI creds). Git-ignored; copy from `.env.example`. |
@@ -46,9 +64,11 @@ Glassmorphic design system in `src/app/globals.css` (light + dark + toggle);
 ## Common commands
 
 ```bash
+docker compose up -d               # start PostgreSQL (host port 5433)
 pnpm install                       # install all workspaces
+pnpm --filter web db:migrate       # apply Prisma migrations
+pnpm --filter web db:seed          # create the admin from apps/web/.env (AUTH_ADMIN_*)
 pnpm dev                           # run the Next.js app (apps/web) on :3000
-pnpm --filter web db:migrate       # apply a new Prisma migration
 pnpm --filter web db:studio        # browse the DB
 
 # Agent pipeline (Phase 1) — needs ANTHROPIC_API_KEY in the repo-root .env

@@ -50,6 +50,25 @@ export interface TicketListItemJson {
   steps: { role: AgentRole; status: StepStatus; order: number }[];
 }
 
+export interface SessionUserJson {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  image: string | null;
+}
+
+export interface AdminUserJson {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  active: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  _count: { createdTickets: number; reviewedTickets: number };
+}
+
 export interface PersonaJson {
   id: string;
   role: AgentRole;

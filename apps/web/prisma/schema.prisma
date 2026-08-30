@@ -10,8 +10,27 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// Application user. Auth is credentials (email + bcrypt hash) for now; `image`
+// / null passwordHash leave room for OAuth later. Roles are plain strings —
+// allowed values in src/lib/auth/rbac.ts.
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String?
+  role         String    @default("REQUESTER") // ADMIN | REVIEWER | REQUESTER
+  active       Boolean   @default(true)
+  image        String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  createdTickets  Ticket[] @relation("TicketCreatedBy")
+  reviewedTickets Ticket[] @relation("TicketReviewedBy")
 }
 
 model Ticket {
@@ -28,6 +47,12 @@ model Ticket {
   category    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Audit: who submitted, and who approved/rejected at the review gate.
+  createdById  String?
+  createdBy    User?   @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedById String?
+  reviewedBy   User?   @relation("TicketReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   steps     AgentStep[]
   artifacts Artifact[]

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono, IBM_Plex_Serif, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
-import { AppShell } from "@/components/app/AppShell";
 import { themeBootScript } from "@/components/app/ThemeToggle";
 
 const plexSans = IBM_Plex_Sans({
@@ -44,9 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
-      <body>
-        <AppShell>{children}</AppShell>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

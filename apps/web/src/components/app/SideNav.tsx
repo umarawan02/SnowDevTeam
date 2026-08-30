@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconDashboard, IconIntake, IconBoard, IconAgents } from "./icons";
+import { IconDashboard, IconIntake, IconBoard, IconAgents, IconUsers } from "./icons";
+import { canManageUsers } from "@/lib/auth/rbac";
 
 const LINKS = [
   { href: "/", label: "Dashboard", Icon: IconDashboard, match: (p: string) => p === "/" },
@@ -11,8 +12,12 @@ const LINKS = [
   { href: "/agents", label: "Agents", Icon: IconAgents, match: (p: string) => p.startsWith("/agents") },
 ];
 
-export function SideNav() {
+export function SideNav({ role }: { role: string }) {
   const pathname = usePathname() || "/";
+  const links = canManageUsers({ role })
+    ? [...LINKS, { href: "/settings/users", label: "Users", Icon: IconUsers, match: (p: string) => p.startsWith("/settings/users") }]
+    : LINKS;
+
   return (
     <nav className="sidebar" aria-label="Primary">
       <Link href="/" className="mark" style={{ textDecoration: "none" }}>
@@ -22,7 +27,7 @@ export function SideNav() {
           <small>AI delivery team</small>
         </span>
       </Link>
-      {LINKS.map(({ href, label, Icon, match }) => (
+      {links.map(({ href, label, Icon, match }) => (
         <Link
           key={href}
           href={href}

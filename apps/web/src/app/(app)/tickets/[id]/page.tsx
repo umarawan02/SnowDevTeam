@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { getTicketWithSteps } from "@/lib/tickets";
 import { getPersonas } from "@/lib/agents/personas";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { canReview } from "@/lib/auth/rbac";
 import { instanceLabel } from "@/lib/instance";
 import { TicketDetail } from "@/components/TicketDetail";
 import type { TicketDetailJson, PersonaJson } from "@/lib/types";
@@ -13,7 +15,11 @@ export default async function TicketPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [ticket, personas] = await Promise.all([getTicketWithSteps(id), getPersonas()]);
+  const [ticket, personas, user] = await Promise.all([
+    getTicketWithSteps(id),
+    getPersonas(),
+    getCurrentUser(),
+  ]);
   if (!ticket) notFound();
 
   const initial = JSON.parse(JSON.stringify(ticket)) as TicketDetailJson;
@@ -21,5 +27,12 @@ export default async function TicketPage({
     personas.map((p) => [p.role, p as unknown as PersonaJson]),
   ) as Record<string, PersonaJson>;
 
-  return <TicketDetail initial={initial} instanceLabel={instanceLabel()} personas={personaByRole} />;
+  return (
+    <TicketDetail
+      initial={initial}
+      instanceLabel={instanceLabel()}
+      personas={personaByRole}
+      canReview={canReview(user)}
+    />
+  );
 }

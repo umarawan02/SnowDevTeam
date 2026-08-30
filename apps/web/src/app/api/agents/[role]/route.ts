@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPersona, updatePersona, isAgentRole } from "@/lib/agents/personas";
 import { MODEL_VALUES } from "@/lib/agents/models";
+import { requireUser, AuthError } from "@/lib/auth/current-user";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ role: s
 }
 
 export async function PUT(req: Request, { params }: { params: Promise<{ role: string }> }) {
+  try {
+    await requireUser(["ADMIN"]);
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return NextResponse.json({ error: e.message }, { status: e.kind === "forbidden" ? 403 : 401 });
+    }
+    throw e;
+  }
+
   const { role } = await params;
   const upper = role.toUpperCase();
   if (!isAgentRole(upper)) return NextResponse.json({ error: "unknown role" }, { status: 404 });

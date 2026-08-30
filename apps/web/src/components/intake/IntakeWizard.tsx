@@ -31,13 +31,13 @@ const PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
 const APPROVALS = ["Manager", "Security", "Finance"];
 const CATEGORIES = ["Hardware", "Software / Access", "Onboarding", "Facilities", "Other"];
 
-export function IntakeWizard() {
+export function IntakeWizard({ defaultRequester = "" }: { defaultRequester?: string }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [need, setNeed] = useState("");
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
-  const [requester, setRequester] = useState("");
+  const [requester, setRequester] = useState(defaultRequester);
   const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("MEDIUM");
   const [category, setCategory] = useState("");
   const [approvals, setApprovals] = useState<string[]>(["Manager"]);

@@ -58,7 +58,7 @@ function section(title: string, body: string): string {
  * is no path that deploys any other status, and nothing calls this without an
  * explicit human action (the Approve button or the manual dev script).
  */
-export async function deployTicket(ticketId: string): Promise<DeployResult> {
+export async function deployTicket(ticketId: string, reviewerId?: string | null): Promise<DeployResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     include: { artifacts: true },
@@ -76,7 +76,10 @@ export async function deployTicket(ticketId: string): Promise<DeployResult> {
   const codeArtifact = ticket.artifacts.find((a) => a.type === ARTIFACT_TYPE.CODE);
   const { files, warnings } = parseGeneratedFiles(codeArtifact?.content ?? "");
 
-  await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.DEPLOYING } });
+  await prisma.ticket.update({
+    where: { id: ticketId },
+    data: { status: TICKET_STATUS.DEPLOYING, ...(reviewerId ? { reviewedById: reviewerId } : {}) },
+  });
 
   let log = `# Deploy — ${ticket.title}\n\nStarted: ${new Date().toISOString()}\nWorkspace: \`${NOW_SDK_CWD}\`\n`;
 
@@ -166,7 +169,11 @@ async function storeLog(ticketId: string, content: string): Promise<void> {
 }
 
 /** Reject a ticket with a required note. */
-export async function rejectTicket(ticketId: string, note: string): Promise<DeployResult> {
+export async function rejectTicket(
+  ticketId: string,
+  note: string,
+  reviewerId?: string | null,
+): Promise<DeployResult> {
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
   if (!ticket) return { ok: false, ticketId, status: "?", error: "ticket not found" };
   if (ticket.status !== TICKET_STATUS.READY_FOR_REVIEW) {
@@ -182,7 +189,11 @@ export async function rejectTicket(ticketId: string, note: string): Promise<Depl
 
   await prisma.ticket.update({
     where: { id: ticketId },
-    data: { status: TICKET_STATUS.REJECTED, reviewNote: trimmed },
+    data: {
+      status: TICKET_STATUS.REJECTED,
+      reviewNote: trimmed,
+      ...(reviewerId ? { reviewedById: reviewerId } : {}),
+    },
   });
   return { ok: true, ticketId, status: TICKET_STATUS.REJECTED };
 }
