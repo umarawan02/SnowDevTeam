@@ -1,70 +1,173 @@
 import Link from "next/link";
-import { AGENT_ROLES } from "@/lib/constants";
-import { listTickets } from "@/lib/tickets";
-import { NewRequestForm } from "@/components/NewRequestForm";
-import { ticketStatusMeta, isTerminal, relativeTime } from "@/lib/ui";
+import { getDashboardMetrics } from "@/lib/metrics";
+import { getPersonas } from "@/lib/agents/personas";
+import { relativeTime, msLabel, usdLabel } from "@/lib/ui";
+import { AreaChart } from "@/components/charts/AreaChart";
+import { BarList } from "@/components/charts/BarList";
+import { Donut } from "@/components/charts/Donut";
+import { PersonaAvatar } from "@/components/PersonaAvatar";
+import { IconArrow } from "@/components/app/icons";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const tickets = await listTickets();
+const VIZ = ["var(--viz-1)", "var(--viz-2)", "var(--viz-3)", "var(--viz-4)", "var(--viz-5)"];
+
+export default async function DashboardPage() {
+  const [m, personas] = await Promise.all([getDashboardMetrics(), getPersonas()]);
+
+  const kpis = [
+    { k: "Requests", v: m.totals.requests, sub: "all time" },
+    { k: "In flight", v: m.totals.running, sub: "running or deploying", cls: m.totals.running ? "hot" : "" },
+    { k: "Awaiting review", v: m.totals.awaitingReview, sub: "needs a human", cls: m.totals.awaitingReview ? "hot" : "" },
+    { k: "Deployed", v: m.totals.deployed, sub: "live in ServiceNow" },
+    { k: "Avg run", v: msLabel(m.avgRunMs), sub: "first agent → QA", isText: true },
+    { k: "AI spend", v: m.costTracked ? usdLabel(m.totalCostUsd) : "—", sub: m.costTracked ? "all runs" : "tracked from next run", isText: true },
+  ];
+
+  const timingByRole = new Map<string, (typeof m.stageTiming)[number]>(
+    m.stageTiming.map((s) => [s.role, s]),
+  );
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <span className="brand">
-          <Link href="/">SnowDevTeam</Link>
-        </span>
-        <span className="tag">AI ServiceNow delivery</span>
-      </header>
+    <div className="page dash">
+      <div className="pagehead">
+        <div className="grow">
+          <h1 className="h1">Delivery overview</h1>
+          <p className="lede">
+            Feature requests move through a five-agent pipeline. Nothing reaches the instance
+            until a human approves it at the review gate.
+          </p>
+        </div>
+      </div>
 
-      <h1 className="page-h">Feature requests</h1>
-      <p className="sub">
-        Submit a request and a pipeline of agents — Business Analyst, Architect, Senior
-        Developer, Developer, QA — works it through to reviewable ServiceNow artifacts.
-        Nothing is deployed without an explicit human approval.
-      </p>
+      <div className="dash-kpis">
+        {kpis.map((c) => (
+          <div className={`glass stat ${c.cls ?? ""}`} key={c.k}>
+            <div className="k">{c.k}</div>
+            <div className="v">{c.v}</div>
+            <div className="sub">{c.sub}</div>
+          </div>
+        ))}
+      </div>
 
-      <NewRequestForm />
+      <div className="dash-grid">
+        <div style={{ display: "grid", gap: 18 }}>
+          <section className="glass panel">
+            <header>
+              <h3>Throughput</h3>
+              <span className="hint">requests / day · 14d</span>
+            </header>
+            <AreaChart data={m.throughput} />
+          </section>
 
-      <section className="card" style={{ padding: "18px 22px" }}>
-        <div className="tlist">
-          <div className="lh">Requests ({tickets.length})</div>
-          {tickets.length === 0 && <p className="empty">No requests yet — submit one above.</p>}
-          {tickets.map((t) => {
-            const meta = ticketStatusMeta(t.status);
-            const running = !isTerminal(t.status);
+          <section className="glass panel">
+            <header>
+              <h3>Stage timing</h3>
+              <span className="hint">avg wall-clock per agent</span>
+            </header>
+            <BarList
+              items={m.stageTiming.map((s) => ({
+                label: s.label,
+                value: s.avgMs,
+                display: s.runs ? msLabel(s.avgMs) : "no runs",
+              }))}
+            />
+          </section>
+
+          <section className="glass panel">
+            <header>
+              <h3>Pipeline funnel</h3>
+              <span className="hint">stages completed across all runs</span>
+            </header>
+            <BarList
+              variant="violet"
+              items={m.funnel.map((f) => ({
+                label: f.label,
+                value: f.reached,
+                max: m.funnel[0]?.reached || 1,
+                display: String(f.reached),
+              }))}
+            />
+          </section>
+        </div>
+
+        <div style={{ display: "grid", gap: 18 }}>
+          <section className="glass panel">
+            <header>
+              <h3>Needs your review</h3>
+              <span className="hint">{m.reviewQueue.length}</span>
+            </header>
+            <div className="reviewq">
+              {m.reviewQueue.length === 0 && <div className="none">Nothing waiting. 🎉</div>}
+              {m.reviewQueue.map((t) => (
+                <Link href={`/tickets/${t.id}`} key={t.id}>
+                  <span className="t">{t.title}</span>
+                  <span className="go">Review <IconArrow style={{ width: 13, height: 13, verticalAlign: "-2px" }} /></span>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {m.costTracked && (
+            <section className="glass panel">
+              <header>
+                <h3>Spend by agent</h3>
+                <span className="hint">{usdLabel(m.totalCostUsd)}</span>
+              </header>
+              <Donut
+                segments={m.costByRole
+                  .filter((c) => c.costUsd > 0)
+                  .map((c, i) => ({ label: c.label, value: c.costUsd, color: VIZ[i % VIZ.length] }))}
+                format={usdLabel}
+              />
+            </section>
+          )}
+
+          <section className="glass panel">
+            <header>
+              <h3>Recent activity</h3>
+            </header>
+            <div className="feed">
+              {m.activity.length === 0 && <div className="none" style={{ fontSize: 13, color: "var(--ink-faint)" }}>No runs yet.</div>}
+              {m.activity.map((e) => (
+                <div className="ev" key={e.id}>
+                  <span className={`fdot ${e.tone}`} />
+                  <span className="fx">{e.text}</span>
+                  <span className="ft">{relativeTime(e.at)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section className="glass panel">
+        <header>
+          <h3>Your delivery team</h3>
+          <Link href="/agents" className="hint" style={{ color: "var(--accent-ink)" }}>
+            Manage agents →
+          </Link>
+        </header>
+        <div className="roster">
+          {personas.map((p) => {
+            const t = timingByRole.get(p.role);
             return (
-              <div className="trow" key={t.id}>
-                <div className="tmain">
-                  <div className="ttitle">
-                    <Link href={`/tickets/${t.id}`}>{t.title}</Link>
-                  </div>
-                  <div className="tmeta">{relativeTime(t.createdAt)}</div>
-                </div>
-                <div className="minipipe" aria-hidden>
-                  {AGENT_ROLES.map((role) => {
-                    const s = t.steps.find((x) => x.role === role);
-                    const cls =
-                      s?.status === "COMPLETE"
-                        ? "ok"
-                        : s?.status === "FAILED"
-                          ? "crit"
-                          : s?.status === "RUNNING"
-                            ? "run"
-                            : "";
-                    return <span key={role} className={`minidot ${cls}`} />;
-                  })}
-                </div>
-                <span className={`pill ${meta.tone}${running ? " pulsing" : ""}`}>
-                  <span className="pdot" />
-                  {meta.label}
+              <Link href="/agents" className="r" key={p.id}>
+                <PersonaAvatar name={p.name} accent={p.accent} seed={p.avatarSeed} size={34} />
+                <span className="meta">
+                  <span className="nm">{p.name}</span>
+                  <span className="rl">{p.title}</span>
                 </span>
-              </div>
+                <span className="st">
+                  {t?.runs ?? 0} run{(t?.runs ?? 0) === 1 ? "" : "s"}
+                  <br />
+                  {t?.runs ? msLabel(t.avgMs) : "—"}
+                </span>
+              </Link>
             );
           })}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

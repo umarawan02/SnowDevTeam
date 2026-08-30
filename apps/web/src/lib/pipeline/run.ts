@@ -95,6 +95,8 @@ export async function runPipeline(
           data: {
             status: STEP_STATUS.COMPLETE,
             output: result.text,
+            costUsd: result.costUsd,
+            numTurns: result.numTurns,
             completedAt: new Date(),
           },
         });

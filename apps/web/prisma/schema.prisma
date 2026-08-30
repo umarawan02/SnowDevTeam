@@ -22,6 +22,10 @@ model Ticket {
   status      String   @default("PENDING")
   // Required note captured when a reviewer rejects the ticket.
   reviewNote  String?
+  // Optional intake metadata (captured by the intake wizard; all nullable).
+  requester   String?
+  priority    String? // LOW | MEDIUM | HIGH
+  category    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -43,6 +47,12 @@ model AgentStep {
   output String?
   error  String?
 
+  // Run telemetry (populated by the pipeline; nullable for older rows).
+  personaName String?
+  model       String?
+  costUsd     Float?
+  numTurns    Int?
+
   startedAt   DateTime?
   completedAt DateTime?
   createdAt   DateTime  @default(now())
@@ -61,4 +71,22 @@ model Artifact {
   content String
 
   createdAt DateTime @default(now())
+}
+
+// Editable AI-team member. One row per pipeline role, seeded from
+// src/lib/agents/personas.ts on first read. The name + `voice` note are threaded
+// into that agent's system prompt at run time.
+model AgentPersona {
+  id         String   @id @default(cuid())
+  role       String   @unique // BA | ARCHITECT | SENIOR_DEV | DEVELOPER | QA
+  name       String
+  title      String
+  tagline    String
+  bio        String
+  voice      String
+  accent     String // hex, drives the generated avatar + accents
+  avatarSeed String
+  model      String? // optional per-agent model override
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

@@ -99,6 +99,24 @@ export function relativeTime(iso: string | Date): string {
 
 export function durationLabel(startedAt?: string | Date | null, completedAt?: string | Date | null): string {
   if (!startedAt || !completedAt) return "";
-  const sec = Math.round((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000);
-  return sec >= 90 ? `${Math.round(sec / 60)}m ${sec % 60}s` : `${sec}s`;
+  return msLabel(new Date(completedAt).getTime() - new Date(startedAt).getTime());
+}
+
+/** Compact duration from a millisecond span, e.g. "6m 39s", "48s", "1h 12m". */
+export function msLabel(ms: number | null | undefined): string {
+  if (ms == null || ms < 0) return "—";
+  const sec = Math.round(ms / 1000);
+  if (sec < 90) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 90) return `${min}m ${sec % 60}s`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h ${min % 60}m`;
+}
+
+/** USD with sensible precision for small AI-run costs. */
+export function usdLabel(n: number | null | undefined): string {
+  if (n == null) return "—";
+  if (n === 0) return "$0";
+  if (n < 1) return `$${n.toFixed(2)}`;
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }

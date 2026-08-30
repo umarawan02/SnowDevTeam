@@ -34,10 +34,10 @@ export function NewRequestForm() {
   }
 
   return (
-    <form className="card newreq" onSubmit={submit}>
-      <h2>New feature request</h2>
-      <p className="hint">
-        The five-agent pipeline runs synchronously — a full run takes ~15–25 minutes.
+    <form className="glass panel" onSubmit={submit} style={{ maxWidth: 640 }}>
+      <p className="lede" style={{ marginTop: 0, marginBottom: 18 }}>
+        The five-agent pipeline runs synchronously — a full run takes ~15–25 minutes
+        and costs roughly $0.30–1.00.
       </p>
       <div className="field">
         <label htmlFor="nr-title">Title</label>
@@ -51,7 +51,7 @@ export function NewRequestForm() {
         />
       </div>
       <div className="field">
-        <label htmlFor="nr-desc">Description</label>
+        <label htmlFor="nr-desc">What do you need?</label>
         <textarea
           id="nr-desc"
           value={description}
@@ -59,10 +59,11 @@ export function NewRequestForm() {
           placeholder="Employees need to request a new laptop, with manager approval, that creates a fulfillment task for IT ops."
           maxLength={10000}
           required
+          style={{ minHeight: 120 }}
         />
       </div>
       <button className="btn" type="submit" disabled={submitting || !title.trim() || !description.trim()}>
-        {submitting ? "Starting…" : "Start pipeline"}
+        {submitting ? "Starting…" : "Start the pipeline"}
       </button>
       {error && <p className="formerr">{error}</p>}
     </form>

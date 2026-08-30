@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono, IBM_Plex_Serif } from "next/font/google";
+import { IBM_Plex_Sans, IBM_Plex_Mono, IBM_Plex_Serif, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
+import { AppShell } from "@/components/app/AppShell";
+import { themeBootScript } from "@/components/app/ThemeToggle";
 
 const plexSans = IBM_Plex_Sans({
   variable: "--font-sans",
@@ -21,15 +23,30 @@ const plexSerif = IBM_Plex_Serif({
   style: ["italic", "normal"],
 });
 
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "SnowDevTeam",
-  description: "AI ServiceNow delivery team — submit a feature request, watch the agent pipeline, review every artifact.",
+  description:
+    "AI ServiceNow delivery team — submit a feature request, watch the agent pipeline, review every artifact before it ships.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${plexSans.variable} ${plexMono.variable} ${plexSerif.variable}`}>
-      <body>{children}</body>
+    <html
+      lang="en"
+      className={`${plexSans.variable} ${plexMono.variable} ${plexSerif.variable} ${bricolage.variable}`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
+      <body>
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

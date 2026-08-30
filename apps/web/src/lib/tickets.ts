@@ -17,6 +17,9 @@ export function listTickets() {
       id: true,
       title: true,
       status: true,
+      priority: true,
+      requester: true,
+      category: true,
       createdAt: true,
       updatedAt: true,
       steps: {

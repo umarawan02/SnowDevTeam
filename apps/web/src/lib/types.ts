@@ -26,6 +26,9 @@ export interface TicketJson {
   description: string;
   status: TicketStatus;
   reviewNote: string | null;
+  requester: string | null;
+  priority: string | null;
+  category: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -39,7 +42,23 @@ export interface TicketListItemJson {
   id: string;
   title: string;
   status: TicketStatus;
+  priority: string | null;
+  requester: string | null;
+  category: string | null;
   createdAt: string;
   updatedAt: string;
   steps: { role: AgentRole; status: StepStatus; order: number }[];
+}
+
+export interface PersonaJson {
+  id: string;
+  role: AgentRole;
+  name: string;
+  title: string;
+  tagline: string;
+  bio: string;
+  voice: string;
+  accent: string;
+  avatarSeed: string;
+  model: string | null;
 }
