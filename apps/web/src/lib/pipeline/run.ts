@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
 import { STEP_STATUS, TICKET_STATUS, type ArtifactType } from "@/lib/constants";
+import { config } from "@/lib/config";
 import { PIPELINE, type PipelineContext } from "@/lib/agents/roles";
 import { runAgent } from "@/lib/agents/runAgent";
+import { resolveAgent } from "@/lib/agents/persona-prompt";
 
 export interface PipelineResult {
   ok: boolean;
@@ -64,6 +66,9 @@ export async function runPipeline(
         }
       }
 
+      const agent = await resolveAgent(stage.role);
+      const modelUsed = agent.model ?? config.ANTHROPIC_MODEL;
+
       const step = await prisma.agentStep.upsert({
         where: { ticketId_order: { ticketId, order: stage.order } },
         create: {
@@ -71,10 +76,14 @@ export async function runPipeline(
           role: stage.role,
           order: stage.order,
           status: STEP_STATUS.RUNNING,
+          personaName: agent.personaName,
+          model: modelUsed,
           startedAt: new Date(),
         },
         update: {
           status: STEP_STATUS.RUNNING,
+          personaName: agent.personaName,
+          model: modelUsed,
           startedAt: new Date(),
           completedAt: null,
           output: null,
@@ -84,10 +93,11 @@ export async function runPipeline(
 
       try {
         const result = await runAgent({
-          systemPrompt: stage.systemPrompt,
+          systemPrompt: agent.systemPrompt,
           userPrompt: stage.buildUserPrompt(ctx),
           maxTurns: stage.maxTurns,
           withTools: stage.withTools,
+          model: agent.model,
         });
 
         await prisma.agentStep.update({

@@ -1,10 +1,19 @@
 import { prisma } from "@/lib/db";
 
-export function createTicket(input: { title: string; description: string }) {
+export function createTicket(input: {
+  title: string;
+  description: string;
+  requester?: string | null;
+  priority?: string | null;
+  category?: string | null;
+}) {
   return prisma.ticket.create({
     data: {
       title: input.title.trim(),
       description: input.description.trim(),
+      requester: input.requester ?? null,
+      priority: input.priority ?? null,
+      category: input.category ?? null,
       // status defaults to PENDING
     },
   });

@@ -1,4 +1,4 @@
-import { NewRequestForm } from "@/components/NewRequestForm";
+import { IntakeWizard } from "@/components/intake/IntakeWizard";
 
 export const dynamic = "force-dynamic";
 
@@ -9,12 +9,12 @@ export default function IntakePage() {
         <div className="grow">
           <h1 className="h1">New feature request</h1>
           <p className="lede">
-            Describe what the business needs. The Business Analyst turns it into requirements,
-            and the rest of the team designs, builds, and QAs it for your review.
+            Describe what the business needs. The Business Analyst turns it into requirements;
+            the rest of the team designs, builds, and QAs it for your review.
           </p>
         </div>
       </div>
-      <NewRequestForm />
+      <IntakeWizard />
     </div>
   );
 }
