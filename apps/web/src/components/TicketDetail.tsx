@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { TICKET_STATUS_META, ROLE_META, isTerminal } from "@/lib/ui";
+import { ticketStatusMeta, roleMeta, isTerminal, relativeTime } from "@/lib/ui";
 import { parseQaVerdict } from "@/lib/pipeline/parse";
-import type { TicketDetailJson } from "@/lib/types";
-import { PipelineStrip } from "@/components/PipelineStrip";
+import type { TicketDetailJson, PersonaJson } from "@/lib/types";
+import { PipelineFlow } from "@/components/ticket/PipelineFlow";
+import { BuiltFlowDiagram } from "@/components/ticket/BuiltFlowDiagram";
 import { ArtifactTabs } from "@/components/ArtifactTabs";
 import { ReviewGate } from "@/components/ReviewGate";
 
@@ -14,9 +15,11 @@ const POLL_MS = 3000;
 export function TicketDetail({
   initial,
   instanceLabel,
+  personas,
 }: {
   initial: TicketDetailJson;
   instanceLabel: string;
+  personas: Record<string, PersonaJson>;
 }) {
   const [ticket, setTicket] = useState<TicketDetailJson>(initial);
 
@@ -31,7 +34,6 @@ export function TicketDetail({
     }
   }, [initial.id]);
 
-  // Poll while the pipeline OR a deploy is in flight.
   const live = !isTerminal(ticket.status) || ticket.status === "DEPLOYING";
   useEffect(() => {
     if (!live) return;
@@ -39,34 +41,47 @@ export function TicketDetail({
     return () => clearInterval(h);
   }, [live, refetch]);
 
-  const meta = TICKET_STATUS_META[ticket.status];
+  const meta = ticketStatusMeta(ticket.status);
   const failedStep = ticket.steps.find((s) => s.status === "FAILED");
   const qaArtifact = ticket.artifacts.find((a) => a.type === "QA_REPORT");
   const verdict = qaArtifact ? parseQaVerdict(qaArtifact.content) : null;
+  const codeArtifact = ticket.artifacts.find((a) => a.type === "CODE");
   const hasDeployLog = ticket.artifacts.some((a) => a.type === "DEPLOY_LOG");
 
   return (
-    <>
+    <div className="page tdetail">
       <p className="crumb">
-        <Link href="/">← All requests</Link>
+        <Link href="/board">← Story board</Link>
       </p>
 
-      <header className="dtl-head">
-        <div className="row1">
+      <header className="td-head">
+        <div className="td-title">
           <h1>{ticket.title}</h1>
           <span className={`pill ${meta.tone}${live ? " pulsing" : ""}`}>
             <span className="pdot" />
             {meta.label}
           </span>
         </div>
-        <p className="req">“{ticket.description}”</p>
+        <div className="td-meta">
+          {ticket.priority && <span className="chip">{cap(ticket.priority)} priority</span>}
+          {ticket.requester && <span className="chip">Requested by {ticket.requester}</span>}
+          {ticket.category && <span className="chip">{ticket.category}</span>}
+          <span className="chip idle">Opened {relativeTime(ticket.createdAt)}</span>
+        </div>
+        <p className="td-req">&ldquo;{ticket.description}&rdquo;</p>
       </header>
 
-      <PipelineStrip steps={ticket.steps} />
+      <section className="glass panel td-pipeline">
+        <header>
+          <h3>Pipeline</h3>
+          <span className="hint">BA → Architect → Senior Dev → Developer → QA</span>
+        </header>
+        <PipelineFlow steps={ticket.steps} personas={personas} />
+      </section>
 
       {failedStep && (
         <div className="errcard">
-          <div className="eh">{ROLE_META[failedStep.role].label} stage failed</div>
+          <div className="eh">{roleMeta(failedStep.role).label} stage failed</div>
           <pre>{failedStep.error ?? "No error message recorded."}</pre>
         </div>
       )}
@@ -77,14 +92,10 @@ export function TicketDetail({
         </div>
       )}
       {ticket.status === "DEPLOYED" && (
-        <div className="deploybanner ok">
-          ✓ Deployed to {instanceLabel} — see the Deploy Verification tab.
-        </div>
+        <div className="deploybanner ok">✓ Deployed to {instanceLabel} — see the Deploy Verification tab.</div>
       )}
       {ticket.status === "FAILED" && hasDeployLog && (
-        <div className="deploybanner crit">
-          Deploy failed — see the Deploy Log tab.
-        </div>
+        <div className="deploybanner crit">Deploy failed — see the Deploy Log tab.</div>
       )}
       {ticket.status === "REJECTED" && ticket.reviewNote && (
         <div className="notecard">
@@ -112,7 +123,21 @@ export function TicketDetail({
         </div>
       )}
 
+      {codeArtifact && (
+        <section className="glass panel td-built">
+          <header>
+            <h3>What gets built</h3>
+            <span className="hint">catalog item + fulfillment flow</span>
+          </header>
+          <BuiltFlowDiagram code={codeArtifact.content} />
+        </section>
+      )}
+
       <ArtifactTabs artifacts={ticket.artifacts} steps={ticket.steps} running={live} />
-    </>
+    </div>
   );
+}
+
+function cap(s: string) {
+  return s.charAt(0) + s.slice(1).toLowerCase();
 }

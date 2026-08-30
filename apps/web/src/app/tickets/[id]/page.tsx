@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { getTicketWithSteps } from "@/lib/tickets";
+import { getPersonas } from "@/lib/agents/personas";
 import { instanceLabel } from "@/lib/instance";
 import { TicketDetail } from "@/components/TicketDetail";
-import type { TicketDetailJson } from "@/lib/types";
+import type { TicketDetailJson, PersonaJson } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -12,14 +13,13 @@ export default async function TicketPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const ticket = await getTicketWithSteps(id);
+  const [ticket, personas] = await Promise.all([getTicketWithSteps(id), getPersonas()]);
   if (!ticket) notFound();
 
   const initial = JSON.parse(JSON.stringify(ticket)) as TicketDetailJson;
+  const personaByRole = Object.fromEntries(
+    personas.map((p) => [p.role, p as unknown as PersonaJson]),
+  ) as Record<string, PersonaJson>;
 
-  return (
-    <div className="shell">
-      <TicketDetail initial={initial} instanceLabel={instanceLabel()} />
-    </div>
-  );
+  return <TicketDetail initial={initial} instanceLabel={instanceLabel()} personas={personaByRole} />;
 }
