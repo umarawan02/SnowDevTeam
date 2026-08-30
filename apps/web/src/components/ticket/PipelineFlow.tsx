@@ -113,7 +113,6 @@ export function PipelineFlow({
         zoomOnPinch={false}
         zoomOnDoubleClick={false}
         preventScrolling={false}
-        proOptions={{ hideAttribution: true }}
       />
     </div>
   );

@@ -82,7 +82,6 @@ export function BuiltFlowDiagram({ code }: { code: string }) {
             zoomOnScroll={false}
             zoomOnDoubleClick={false}
             preventScrolling={false}
-            proOptions={{ hideAttribution: true }}
           >
             <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
           </ReactFlow>

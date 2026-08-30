@@ -666,11 +666,13 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; letter-spac
 
 /* React Flow theme bridge */
 .react-flow { background: transparent; }
-.react-flow__attribution { display: none; }
 .react-flow__edge-path { stroke: var(--border-strong); }
 .react-flow__handle { opacity: 0; }
 .react-flow__background { color: var(--border); }
-.react-flow__panel { display: none; }
+.react-flow__attribution {
+  background: transparent; font-size: 8px;
+}
+.react-flow__attribution a { color: var(--ink-faint); }
 @media (prefers-reduced-motion: reduce) {
   .react-flow__edge.animated path { animation: none; }
 }
