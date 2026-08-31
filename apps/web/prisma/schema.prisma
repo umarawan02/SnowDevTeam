@@ -29,8 +29,9 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  createdTickets  Ticket[] @relation("TicketCreatedBy")
-  reviewedTickets Ticket[] @relation("TicketReviewedBy")
+  createdTickets      Ticket[]             @relation("TicketCreatedBy")
+  reviewedTickets     Ticket[]             @relation("TicketReviewedBy")
+  intakeConversations IntakeConversation[]
 }
 
 model Ticket {
@@ -56,6 +57,33 @@ model Ticket {
 
   steps     AgentStep[]
   artifacts Artifact[]
+
+  intakeConversation IntakeConversation?
+}
+
+// A conversational intake session: the requester talks to an assistant that
+// gathers requirements, then hands off to the pipeline. Owned by one user.
+model IntakeConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String   @default("New request")
+  status    String   @default("GATHERING") // GATHERING | BUILDING
+  ticketId  String?  @unique
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages IntakeMessage[]
+}
+
+model IntakeMessage {
+  id             String             @id @default(cuid())
+  conversationId String
+  conversation   IntakeConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // user | assistant
+  content        String
+  createdAt      DateTime           @default(now())
 }
 
 model AgentStep {

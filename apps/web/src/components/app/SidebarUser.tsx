@@ -6,25 +6,25 @@ import { useRouter } from "next/navigation";
 import { roleMeta, canManageUsers } from "@/lib/auth/rbac";
 import type { CurrentUser } from "@/lib/auth/current-user";
 
-function initials(u: CurrentUser): string {
+function initials(u: CurrentUser) {
   const base = (u.name || u.email).trim();
   const parts = base.split(/[\s@.]+/).filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
-
-function hue(seed: string): number {
+function hue(seed: string) {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return h % 360;
 }
 
-export function UserMenu({ user }: { user: CurrentUser }) {
+export function SidebarUser({ user }: { user: CurrentUser }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const rm = roleMeta(user.role);
+  const h = hue(user.email);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -40,34 +40,10 @@ export function UserMenu({ user }: { user: CurrentUser }) {
     router.refresh();
   }
 
-  const h = hue(user.email);
-
   return (
-    <div className="usermenu" ref={ref}>
-      <button
-        type="button"
-        className="um-trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span
-          className="um-avatar"
-          style={{ background: `linear-gradient(140deg, hsl(${h} 65% 52%), hsl(${(h + 40) % 360} 70% 45%))` }}
-        >
-          {initials(user)}
-        </span>
-      </button>
-
+    <div className="sbuser" ref={ref}>
       {open && (
-        <div className="um-pop" role="menu">
-          <div className="um-head">
-            <div className="um-name">{user.name || user.email}</div>
-            <div className="um-sub">{user.email}</div>
-            <span className="chip accent" style={{ marginTop: 6 }}>
-              {rm.label}
-            </span>
-          </div>
+        <div className="sbuser-pop" role="menu">
           {canManageUsers(user) && (
             <Link href="/settings/users" className="um-item" role="menuitem" onClick={() => setOpen(false)}>
               User management
@@ -78,6 +54,21 @@ export function UserMenu({ user }: { user: CurrentUser }) {
           </button>
         </div>
       )}
+      <button type="button" className="sbuser-trigger" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span
+          className="sbuser-av"
+          style={{ background: `linear-gradient(140deg, hsl(${h} 70% 52%), hsl(${(h + 44) % 360} 72% 46%))` }}
+        >
+          {initials(user)}
+        </span>
+        <span className="sbuser-meta">
+          <span className="sbuser-name">{user.name || user.email}</span>
+          <span className="sbuser-role">{rm.label}</span>
+        </span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
     </div>
   );
 }

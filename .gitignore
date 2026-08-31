@@ -22,6 +22,8 @@ out/
 # build output
 dist/
 build/
+# ...but not source route folders that happen to be named "build"
+!apps/web/src/**/build/
 
 # now-sdk: stored instance credentials + build/pack output
 **/.now-sdk/

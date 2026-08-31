@@ -50,6 +50,36 @@ export interface TicketListItemJson {
   steps: { role: AgentRole; status: StepStatus; order: number }[];
 }
 
+export interface IntakeMessageJson {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  ready: {
+    title: string;
+    description: string;
+    priority: "LOW" | "MEDIUM" | "HIGH";
+    category?: string;
+    approvals: string[];
+    targetUsers?: string;
+  } | null;
+  createdAt: string;
+}
+
+export interface IntakeConversationJson {
+  id: string;
+  title: string;
+  status: string; // GATHERING | BUILDING
+  ticketId: string | null;
+  messages: IntakeMessageJson[];
+}
+
+export interface ConversationSummaryJson {
+  id: string;
+  title: string;
+  status: string;
+  ticketId: string | null;
+}
+
 export interface SessionUserJson {
   id: string;
   email: string;
