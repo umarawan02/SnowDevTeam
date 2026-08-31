@@ -16,7 +16,7 @@ plan and `docs/phase4-validation.md` for the end-to-end validation write-up.
 | Screen | What |
 |---|---|
 | `/` Dashboard | KPIs, throughput, per-agent stage timing, pipeline funnel, review queue, activity feed, spend. |
-| `/intake` | 3-step request wizard (describe → details → review) with quick-start templates. |
+| `/intake`, `/intake/[id]` | Chat intake — talk to an assistant that gathers the requirements, then **Start development** creates the ticket and kicks off the pipeline. |
 | `/board` | Live status kanban — cards move across columns as the pipeline runs. |
 | `/agents`, `/agents/[role]` | The 5 AI personas (`AgentPersona` table). Rename them and rewrite their profile + "voice" — the name and voice are threaded into that agent's system prompt on every run. |
 | `/tickets/[id]` | Run detail: the pipeline as a live node graph, the review gate, a "what gets built" flow diagram parsed from the generated code, and every artifact. |
