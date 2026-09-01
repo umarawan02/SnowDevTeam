@@ -9,7 +9,8 @@ import { config } from "@/lib/config";
 import { PIPELINE, ROLE_CONFIG, type PipelineContext } from "@/lib/agents/roles";
 import { runAgent } from "@/lib/agents/runAgent";
 import { resolveAgent } from "@/lib/agents/persona-prompt";
-import { parseQaVerdict, parseReworkFrom, type ReworkFrom } from "@/lib/pipeline/parse";
+import { parseQaVerdict, parseReworkFrom, parseGeneratedFiles, type ReworkFrom } from "@/lib/pipeline/parse";
+import { buildWorkspace } from "@/lib/nowsdk/workspace";
 
 export interface PipelineResult {
   ok: boolean;
@@ -20,8 +21,14 @@ export interface PipelineResult {
 
 /** Auto rework rounds the pipeline will run itself before handing to the human. */
 const MAX_AUTO_REWORK = 2;
+/** Times the build gate re-runs the Developer to fix compile errors before failing. */
+const MAX_BUILD_FIX = 3;
 
-const DEPLOY_ARTIFACTS: ArtifactType[] = [
+const DEV_ORDER = ROLE_CONFIG.DEVELOPER.order;
+const QA_ORDER = ROLE_CONFIG.QA.order;
+
+const DERIVED_ARTIFACTS: ArtifactType[] = [
+  ARTIFACT_TYPE.BUILD_LOG,
   ARTIFACT_TYPE.DEPLOY_LOG,
   ARTIFACT_TYPE.DEPLOY_VERIFICATION,
 ];
@@ -35,23 +42,74 @@ async function resetFrom(ticketId: string, fromOrder: number): Promise<void> {
   const roles = PIPELINE.filter((s) => s.order >= fromOrder).map((s) => s.role);
   await prisma.agentStep.deleteMany({ where: { ticketId, role: { in: roles } } });
   await prisma.artifact.deleteMany({
-    where: { ticketId, type: { in: [...artifactTypesFrom(fromOrder), ...DEPLOY_ARTIFACTS] } },
+    where: { ticketId, type: { in: [...artifactTypesFrom(fromOrder), ...DERIVED_ARTIFACTS] } },
   });
 }
 
 /**
- * Run pipeline stages from `startOrder` onward, writing a step + artifact per
- * stage. On a stage failure: mark the step + ticket FAILED and return.
+ * Compile-check the Developer's code before it reaches QA. Runs `now-sdk build`;
+ * on failure it re-runs the Developer with the diagnostics as a fix-only
+ * directive, up to MAX_BUILD_FIX rounds. Returns ok only when the build is clean.
+ */
+async function runBuildGate(ticketId: string, ctx: PipelineContext): Promise<{ ok: boolean; log: string }> {
+  for (let attempt = 0; attempt <= MAX_BUILD_FIX; attempt++) {
+    const { files, warnings } = parseGeneratedFiles(ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "");
+    if (files.length === 0) {
+      const log = `# Build\n\n✗ No parseable files in the Developer output.\n\n${warnings.join("\n")}`;
+      await upsertArtifact(ticketId, ARTIFACT_TYPE.BUILD_LOG, log);
+      return { ok: false, log };
+    }
+
+    const build = await buildWorkspace(files);
+    const header =
+      build.code === 0
+        ? `# Build\n\n✓ \`now-sdk build\` passed (exit 0) — ${build.fileCount} file(s)`
+        : `# Build\n\n✗ \`now-sdk build\` failed (exit ${build.code}) — fix attempt ${attempt + 1} of ${MAX_BUILD_FIX + 1}`;
+    const body = [build.stdout, build.stderr].filter(Boolean).join("\n");
+    await upsertArtifact(
+      ticketId,
+      ARTIFACT_TYPE.BUILD_LOG,
+      `${header}\n\n\`\`\`text\n${body.trim() || "(no output)"}\n\`\`\`\n`,
+    );
+
+    if (build.code === 0) return { ok: true, log: body };
+    if (attempt === MAX_BUILD_FIX) return { ok: false, log: body };
+
+    // Re-run the Developer against the compiler errors, nothing else.
+    await prisma.agentStep.deleteMany({ where: { ticketId, role: "DEVELOPER" } });
+    await prisma.artifact.deleteMany({ where: { ticketId, type: ARTIFACT_TYPE.CODE } });
+    delete ctx.artifacts[ARTIFACT_TYPE.CODE];
+    ctx.buildErrors = build.diagnostics;
+    const res = await runStages(ticketId, ctx, DEV_ORDER, DEV_ORDER, new Set(), [], { gateBuild: false });
+    ctx.buildErrors = undefined;
+    if (!res.ok) return { ok: false, log: res.error ?? "developer re-run failed" };
+  }
+  return { ok: false, log: "build gate exhausted" };
+}
+
+async function upsertArtifact(ticketId: string, type: string, content: string): Promise<void> {
+  const existing = await prisma.artifact.findFirst({ where: { ticketId, type } });
+  if (existing) await prisma.artifact.update({ where: { id: existing.id }, data: { content } });
+  else await prisma.artifact.create({ data: { ticketId, type, content } });
+}
+
+/**
+ * Run pipeline stages `startOrder..endOrder` (inclusive), writing a step +
+ * artifact per stage. After the Developer stage (unless `opts.gateBuild` is
+ * false) the build gate runs. On a stage or gate failure: mark the step + ticket
+ * FAILED and return.
  */
 async function runStages(
   ticketId: string,
   ctx: PipelineContext,
   startOrder: number,
+  endOrder: number,
   skipCompleted: Set<number>,
   existingArtifacts: { type: string; content: string }[],
+  opts: { gateBuild?: boolean } = {},
 ): Promise<PipelineResult> {
   for (const stage of PIPELINE) {
-    if (stage.order < startOrder) continue;
+    if (stage.order < startOrder || stage.order > endOrder) continue;
 
     if (skipCompleted.has(stage.order)) {
       const a = existingArtifacts.find((x) => x.type === stage.artifactType);
@@ -93,6 +151,7 @@ async function runStages(
         maxTurns: stage.maxTurns,
         withTools: stage.withTools,
         webTools: stage.webTools,
+        buildTool: stage.buildTool,
         model: agent.model,
       });
 
@@ -124,6 +183,23 @@ async function runStages(
       });
       return { ok: false, ticketId, failedRole: stage.role, error: message };
     }
+
+    // Build gate: the Developer's code must compile before QA sees it.
+    if (stage.role === "DEVELOPER" && opts.gateBuild !== false && endOrder >= QA_ORDER) {
+      const gate = await runBuildGate(ticketId, ctx);
+      if (!gate.ok) {
+        await prisma.agentStep.updateMany({
+          where: { ticketId, role: "DEVELOPER" },
+          data: {
+            status: STEP_STATUS.FAILED,
+            error: `Code did not compile after ${MAX_BUILD_FIX} fix attempts. See the Build tab.`,
+            completedAt: new Date(),
+          },
+        });
+        await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.FAILED } });
+        return { ok: false, ticketId, failedRole: "DEVELOPER", error: "build gate failed" };
+      }
+    }
   }
   return { ok: true, ticketId };
 }
@@ -154,7 +230,7 @@ async function autoReworkLoop(ticketId: string, ctx: PipelineContext, startRound
     ctx.reworkNote = qaText;
     ctx.reworkRound = round;
 
-    const res = await runStages(ticketId, ctx, fromOrder, new Set(), []);
+    const res = await runStages(ticketId, ctx, fromOrder, QA_ORDER, new Set(), []);
     if (!res.ok) return res;
   }
 }
@@ -193,7 +269,7 @@ export async function runPipeline(
     : new Set<number>();
 
   try {
-    const first = await runStages(ticketId, ctx, 0, skipCompleted, ticket.artifacts);
+    const first = await runStages(ticketId, ctx, 0, QA_ORDER, skipCompleted, ticket.artifacts);
     if (!first.ok) return first;
 
     const rework = await autoReworkLoop(ticketId, ctx, ticket.reworkRound);
@@ -228,22 +304,24 @@ export async function runRework(
   });
   if (!ticket) return { ok: false, ticketId, error: "ticket not found" };
 
-  const deployLog = [...ticket.artifacts].reverse().find((a) => a.type === ARTIFACT_TYPE.DEPLOY_LOG);
-  const isDeployFailure = ticket.status === TICKET_STATUS.FAILED && !!deployLog;
-  if (ticket.status !== TICKET_STATUS.READY_FOR_REVIEW && !isDeployFailure) {
+  const rev = [...ticket.artifacts].reverse();
+  const buildLog =
+    rev.find((a) => a.type === ARTIFACT_TYPE.BUILD_LOG) ??
+    rev.find((a) => a.type === ARTIFACT_TYPE.DEPLOY_LOG);
+  const isBuildFailure = ticket.status === TICKET_STATUS.FAILED && !!buildLog;
+  if (ticket.status !== TICKET_STATUS.READY_FOR_REVIEW && !isBuildFailure) {
     return {
       ok: false,
       ticketId,
-      error: `ticket is ${ticket.status}; only a READY_FOR_REVIEW ticket or a deploy-build failure can be reworked`,
+      error: `ticket is ${ticket.status}; only a READY_FOR_REVIEW ticket or a build failure can be reworked`,
     };
   }
 
-  const qaText =
-    [...ticket.artifacts].reverse().find((a) => a.type === ARTIFACT_TYPE.QA_REPORT)?.content ?? "";
+  const qaText = rev.find((a) => a.type === ARTIFACT_TYPE.QA_REPORT)?.content ?? "";
   const directive = [
     input.note.trim(),
-    isDeployFailure
-      ? `\n\n---\n\n## The last build failed — fix these errors\n\nThe generated code did not pass \`now-sdk build\`. Every error below must be gone.\n\n${deployLog!.content}`
+    isBuildFailure
+      ? `\n\n---\n\n## The last build failed — fix these errors\n\nThe generated code did not pass \`now-sdk build\`. Every error below must be gone.\n\n${buildLog!.content}`
       : "",
     qaText ? `\n\n---\n\n## Latest QA report\n\n${qaText}` : "",
   ]
@@ -278,7 +356,7 @@ export async function runRework(
   });
 
   try {
-    const res = await runStages(ticketId, ctx, fromOrder, new Set(), []);
+    const res = await runStages(ticketId, ctx, fromOrder, QA_ORDER, new Set(), []);
     if (!res.ok) return res;
     await prisma.ticket.update({
       where: { id: ticketId },

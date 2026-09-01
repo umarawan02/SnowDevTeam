@@ -107,6 +107,14 @@ code. Violating any of these fails `now-sdk build`, which blocks deploy.
   action-parameter object. The one allowed capture is
   `const r = wfa.action(action.core.X, {$id}, {...})` to reference `r.output`
   later (itself wrapped: `wfa.dataPill(r.record, 'reference')`).
+- **`wfa.action(...)` arity is exact:** `wfa.action(action.<ns>.<name>, { $id:
+  Now.ID['...'] }, { <inputs> })` — first arg is the **Action object** (not a
+  string), second is the `$id` config, third is the inputs object. `TS2769 No
+  overload matches this call` on `wfa.action` means one of: a wrong/misspelled
+  `action.<ns>.<name>` (confirm the exact identifier in `wfa-flow-actions-guide`),
+  an inputs key the action doesn't accept, or a missing/extra argument.
+  `lookUpRecord` returns one record; `lookUpRecords` returns a list — pick the
+  one whose output shape you actually use.
 - **`params.trigger.request_item` (serviceCatalog trigger) only dot-walks to
   real `sc_req_item` columns / references:** `.request`, `.cat_item`,
   `.requested_for`, `.opened_by`, `.state`, `.number`, `.sys_id`. **There is

@@ -43,10 +43,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   });
   if (!ticket) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const hasDeployLog = ticket.artifacts.some((a) => a.type === "DEPLOY_LOG");
+  const hasBuildLog = ticket.artifacts.some(
+    (a) => a.type === "DEPLOY_LOG" || a.type === "BUILD_LOG",
+  );
   const reworkable =
     ticket.status === TICKET_STATUS.READY_FOR_REVIEW ||
-    (ticket.status === TICKET_STATUS.FAILED && hasDeployLog);
+    (ticket.status === TICKET_STATUS.FAILED && hasBuildLog);
   if (!reworkable) {
     return NextResponse.json(
       { error: `ticket is ${ticket.status}; only a ready-for-review ticket or a build failure can be sent back for rework` },

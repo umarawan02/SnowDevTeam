@@ -52,6 +52,8 @@ export function TicketDetail({
   const reworkFrom = qaArtifact ? parseReworkFrom(qaArtifact.content) : null;
   const codeArtifact = latest("CODE");
   const hasDeployLog = ticket.artifacts.some((a) => a.type === "DEPLOY_LOG");
+  const buildLog = latest("BUILD_LOG");
+  const buildFailed = ticket.status === "FAILED" && !!buildLog && /✗|failed/i.test(buildLog.content);
 
   return (
     <div className="page tdetail">
@@ -105,7 +107,12 @@ export function TicketDetail({
       {ticket.status === "FAILED" && hasDeployLog && (
         <div className="deploybanner crit">Deploy failed — see the Deploy Log tab.</div>
       )}
-      {ticket.status === "FAILED" && hasDeployLog && canReview && (
+      {buildFailed && (
+        <div className="deploybanner crit">
+          The generated code will not compile — see the Build tab.
+        </div>
+      )}
+      {ticket.status === "FAILED" && (hasDeployLog || buildFailed) && canReview && (
         <ReviewGate
           ticketId={ticket.id}
           instanceLabel={instanceLabel}

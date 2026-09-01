@@ -8,7 +8,10 @@ before anything is built and deployed to a real ServiceNow instance.
 The **Architect** leads with out-of-the-box ServiceNow — it inventories the
 instance and researches best practice (`WebSearch`/`WebFetch`, scoped to
 servicenow.com) before designing anything custom, and hands the build team an
-authoritative *Implementation guidance* spec. When **QA** returns
+authoritative *Implementation guidance* spec. The **Developer**'s code is run
+through `now-sdk build` **before QA sees it** (the Developer also has a `build`
+tool to self-check); a compile failure re-runs the Developer against the errors,
+up to 3 times, then fails the ticket at that stage. When **QA** returns
 `NEEDS_REWORK`, the pipeline **loops back automatically** (up to 2 rounds) from
 the stage QA points at, with the findings as a must-fix directive; a reviewer
 can also **Send back for rework** from the gate.

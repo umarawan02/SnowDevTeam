@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "@/lib/config";
-import { nowsdkMcpServer, NOWSDK_TOOL_NAMES } from "@/lib/nowsdk/mcp";
+import { nowsdkMcpServer, NOWSDK_TOOL_NAMES, NOWSDK_BUILD_TOOL } from "@/lib/nowsdk/mcp";
 
 export interface RunAgentInput {
   systemPrompt: string;
@@ -9,6 +9,8 @@ export interface RunAgentInput {
   withTools: boolean;
   /** Also allow WebSearch / WebFetch (Architect research). Implies withTools. */
   webTools?: boolean;
+  /** Also allow the `build` tool (Developer — compile draft code). Implies withTools. */
+  buildTool?: boolean;
   model?: string;
 }
 
@@ -38,7 +40,7 @@ export interface RunAgentResult {
  * step FAILED.
  */
 export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
-  const { systemPrompt, userPrompt, maxTurns, withTools, webTools } = input;
+  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool } = input;
   const model = input.model ?? config.ANTHROPIC_MODEL;
 
   const toolCalls: ToolCall[] = [];
@@ -59,10 +61,14 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       settingSources: [],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
-      ...(withTools || webTools
+      ...(withTools || webTools || buildTool
         ? {
             mcpServers: { nowsdk: nowsdkMcpServer },
-            allowedTools: [...NOWSDK_TOOL_NAMES, ...(webTools ? WEB_TOOLS : [])],
+            allowedTools: [
+              ...NOWSDK_TOOL_NAMES,
+              ...(buildTool ? [NOWSDK_BUILD_TOOL] : []),
+              ...(webTools ? WEB_TOOLS : []),
+            ],
           }
         : {}),
     },

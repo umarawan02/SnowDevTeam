@@ -12,6 +12,8 @@ export interface PipelineContext {
    */
   reworkNote?: string;
   reworkRound?: number;
+  /** Set by the build gate when the Developer's code failed `now-sdk build`. */
+  buildErrors?: string;
 }
 
 export interface RoleConfig {
@@ -23,6 +25,8 @@ export interface RoleConfig {
   withTools: boolean;
   /** Whether this agent also gets WebSearch / WebFetch (Architect only). */
   webTools: boolean;
+  /** Whether this agent gets the `build` tool — compile draft code (Developer only). */
+  buildTool: boolean;
   maxTurns: number;
   systemPrompt: string;
   buildUserPrompt: (ctx: PipelineContext) => string;
@@ -42,6 +46,14 @@ const request = (ctx: PipelineContext) =>
 
 /** Appended to rework stages so they fix exactly what was flagged. */
 function reworkSection(ctx: PipelineContext): string {
+  if (ctx.buildErrors) {
+    return section(
+      "Your last build failed — fix ONLY these compiler errors",
+      `\`now-sdk build\` rejected your code. Fix exactly the errors below and change ` +
+        `nothing else. Re-check every construct against \`explain\` and the ` +
+        `build-breaker list. Then emit the corrected file blocks.\n\n\`\`\`text\n${ctx.buildErrors}\n\`\`\``,
+    );
+  }
   if (!ctx.reworkNote) return "";
   return section(
     `Rework — round ${ctx.reworkRound ?? 1}`,
@@ -60,6 +72,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     artifactType: ARTIFACT_TYPE.REQUIREMENTS,
     withTools: false,
     webTools: false,
+    buildTool: false,
     maxTurns: 1,
     systemPrompt: SYSTEM_PROMPTS.BA,
     buildUserPrompt: (ctx) =>
@@ -73,6 +86,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     artifactType: ARTIFACT_TYPE.DESIGN,
     withTools: true,
     webTools: true,
+    buildTool: false,
     maxTurns: 45,
     systemPrompt: SYSTEM_PROMPTS.ARCHITECT,
     buildUserPrompt: (ctx) =>
@@ -89,6 +103,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     artifactType: ARTIFACT_TYPE.TASK_LIST,
     withTools: true,
     webTools: false,
+    buildTool: false,
     maxTurns: 24,
     systemPrompt: SYSTEM_PROMPTS.SENIOR_DEV,
     buildUserPrompt: (ctx) =>
@@ -106,6 +121,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     artifactType: ARTIFACT_TYPE.CODE,
     withTools: true,
     webTools: false,
+    buildTool: true,
     maxTurns: 55,
     systemPrompt: SYSTEM_PROMPTS.DEVELOPER,
     buildUserPrompt: (ctx) =>
@@ -123,6 +139,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     artifactType: ARTIFACT_TYPE.QA_REPORT,
     withTools: false,
     webTools: false,
+    buildTool: false,
     maxTurns: 2,
     systemPrompt: SYSTEM_PROMPTS.QA,
     buildUserPrompt: (ctx) =>
