@@ -26,6 +26,8 @@ export interface TicketJson {
   description: string;
   status: TicketStatus;
   reviewNote: string | null;
+  reworkRound: number;
+  reworkReason: string | null;
   requester: string | null;
   priority: string | null;
   category: string | null;
@@ -45,6 +47,7 @@ export interface TicketListItemJson {
   priority: string | null;
   requester: string | null;
   category: string | null;
+  reworkRound: number;
   createdAt: string;
   updatedAt: string;
   steps: { role: AgentRole; status: StepStatus; order: number }[];

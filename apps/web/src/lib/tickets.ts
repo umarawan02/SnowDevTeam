@@ -31,6 +31,7 @@ export function listTickets() {
       priority: true,
       requester: true,
       category: true,
+      reworkRound: true,
       createdAt: true,
       updatedAt: true,
       steps: {

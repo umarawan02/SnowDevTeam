@@ -5,6 +5,14 @@ Developer → Developer → QA) turns a customer feature request into deployable
 ServiceNow artifacts. A human reviews every stage and must click **Approve**
 before anything is built and deployed to a real ServiceNow instance.
 
+The **Architect** leads with out-of-the-box ServiceNow — it inventories the
+instance and researches best practice (`WebSearch`/`WebFetch`, scoped to
+servicenow.com) before designing anything custom, and hands the build team an
+authoritative *Implementation guidance* spec. When **QA** returns
+`NEEDS_REWORK`, the pipeline **loops back automatically** (up to 2 rounds) from
+the stage QA points at, with the findings as a must-fix directive; a reviewer
+can also **Send back for rework** from the gate.
+
 Status: **MVP complete** — all 4 build phases done, plus a product-UI redesign.
 Submitting a request in the browser runs the 5 agents, the human reviews every
 artifact, and clicking **Approve** builds + deploys a real catalog item and flow
@@ -35,8 +43,8 @@ JWT (`jose`) in an httpOnly cookie; passwords are bcrypt hashes. Auth code lives
 | Role | Can |
 |---|---|
 | **Admin** | everything + user management + edit agent personas |
-| **Reviewer** | approve / reject at the review gate, submit, view |
-| **Requester** | submit requests, view runs — no approve/reject |
+| **Reviewer** | approve / reject / send back for rework at the review gate, submit, view |
+| **Requester** | submit requests, view runs — no approve/reject/rework |
 
 Accounts are invite-only: the seeded admin (`AUTH_ADMIN_*` in `apps/web/.env`)
 creates users from `/settings/users`.

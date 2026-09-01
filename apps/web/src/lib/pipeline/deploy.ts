@@ -61,7 +61,7 @@ function section(title: string, body: string): string {
 export async function deployTicket(ticketId: string, reviewerId?: string | null): Promise<DeployResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    include: { artifacts: true },
+    include: { artifacts: { orderBy: { createdAt: "asc" } } },
   });
   if (!ticket) return { ok: false, ticketId, status: "?", error: "ticket not found" };
   if (ticket.status !== TICKET_STATUS.READY_FOR_REVIEW) {
@@ -73,7 +73,8 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
     };
   }
 
-  const codeArtifact = ticket.artifacts.find((a) => a.type === ARTIFACT_TYPE.CODE);
+  // Latest CODE artifact — a rework loop may have produced more than one.
+  const codeArtifact = [...ticket.artifacts].reverse().find((a) => a.type === ARTIFACT_TYPE.CODE);
   const { files, warnings } = parseGeneratedFiles(codeArtifact?.content ?? "");
 
   await prisma.ticket.update({

@@ -42,6 +42,11 @@ model Ticket {
   status      String   @default("PENDING")
   // Required note captured when a reviewer rejects the ticket.
   reviewNote  String?
+  // Rework loop: how many times the pipeline has looped back for QA fixes, and
+  // the directive driving the most recent rework (QA report excerpt or a
+  // reviewer's note).
+  reworkRound  Int     @default(0)
+  reworkReason String?
   // Optional intake metadata (captured by the intake wizard; all nullable).
   requester   String?
   priority    String? // LOW | MEDIUM | HIGH

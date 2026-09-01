@@ -28,6 +28,7 @@ export function StoryCard({
           </span>
         )}
         {ticket.requester && <span className="chip">{ticket.requester}</span>}
+        {ticket.reworkRound > 0 && <span className="chip warn">rework ×{ticket.reworkRound}</span>}
         <span className={`chip ${meta.tone}`}>{meta.label}</span>
       </div>
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ticketStatusMeta, roleMeta, isTerminal, relativeTime } from "@/lib/ui";
-import { parseQaVerdict } from "@/lib/pipeline/parse";
+import { parseQaVerdict, parseReworkFrom } from "@/lib/pipeline/parse";
 import type { TicketDetailJson, PersonaJson } from "@/lib/types";
 import { PipelineFlow } from "@/components/ticket/PipelineFlow";
 import { BuiltFlowDiagram } from "@/components/ticket/BuiltFlowDiagram";
@@ -45,9 +45,12 @@ export function TicketDetail({
 
   const meta = ticketStatusMeta(ticket.status);
   const failedStep = ticket.steps.find((s) => s.status === "FAILED");
-  const qaArtifact = ticket.artifacts.find((a) => a.type === "QA_REPORT");
+  // Latest artifact per type — a rework loop can produce more than one.
+  const latest = (type: string) => [...ticket.artifacts].reverse().find((a) => a.type === type);
+  const qaArtifact = latest("QA_REPORT");
   const verdict = qaArtifact ? parseQaVerdict(qaArtifact.content) : null;
-  const codeArtifact = ticket.artifacts.find((a) => a.type === "CODE");
+  const reworkFrom = qaArtifact ? parseReworkFrom(qaArtifact.content) : null;
+  const codeArtifact = latest("CODE");
   const hasDeployLog = ticket.artifacts.some((a) => a.type === "DEPLOY_LOG");
 
   return (
@@ -68,6 +71,9 @@ export function TicketDetail({
           {ticket.priority && <span className="chip">{cap(ticket.priority)} priority</span>}
           {ticket.requester && <span className="chip">Requested by {ticket.requester}</span>}
           {ticket.category && <span className="chip">{ticket.category}</span>}
+          {ticket.reworkRound > 0 && (
+            <span className="chip warn">Rework round {ticket.reworkRound}</span>
+          )}
           <span className="chip idle">Opened {relativeTime(ticket.createdAt)}</span>
         </div>
         <p className="td-req">&ldquo;{ticket.description}&rdquo;</p>
@@ -99,6 +105,15 @@ export function TicketDetail({
       {ticket.status === "FAILED" && hasDeployLog && (
         <div className="deploybanner crit">Deploy failed — see the Deploy Log tab.</div>
       )}
+      {ticket.status === "FAILED" && hasDeployLog && canReview && (
+        <ReviewGate
+          ticketId={ticket.id}
+          instanceLabel={instanceLabel}
+          onChanged={refetch}
+          reworkFrom={reworkFrom ?? "DEVELOPER"}
+          variant="buildfix"
+        />
+      )}
       {ticket.status === "REJECTED" && ticket.reviewNote && (
         <div className="notecard">
           <div className="eh">Rejected</div>
@@ -108,7 +123,12 @@ export function TicketDetail({
 
       {ticket.status === "READY_FOR_REVIEW" &&
         (canReview ? (
-          <ReviewGate ticketId={ticket.id} instanceLabel={instanceLabel} onChanged={refetch} />
+          <ReviewGate
+            ticketId={ticket.id}
+            instanceLabel={instanceLabel}
+            onChanged={refetch}
+            reworkFrom={reworkFrom}
+          />
         ) : (
           <div className="gate gate-locked">
             <div className="gate-head">

@@ -950,10 +950,11 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; letter-spac
 .gate-q { font-size: 13px; color: var(--ink); font-weight: 500; }
 .gate-reject { display: flex; flex-direction: column; gap: 8px; }
 .gate-reject label { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-soft); }
-.gate-reject textarea, .field textarea, .field input {
+.gate-reject textarea, .gate-reject select, .field textarea, .field input, .field select {
   font: inherit; font-size: 14px; color: var(--ink); background: var(--bg);
   border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 11px; width: 100%; resize: vertical;
 }
+.gate-reject select, .field select { resize: none; }
 .gate-reject textarea { min-height: 72px; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .field label { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-soft); }

@@ -6,6 +6,12 @@ export interface PipelineContext {
   description: string;
   /** Prior-stage artifacts, keyed by ArtifactType, in the order they were produced. */
   artifacts: Partial<Record<ArtifactType, string>>;
+  /**
+   * Set when the pipeline is looping back for rework — the QA report and/or a
+   * reviewer's note. Every rework stage must address it exactly.
+   */
+  reworkNote?: string;
+  reworkRound?: number;
 }
 
 export interface RoleConfig {
@@ -15,6 +21,8 @@ export interface RoleConfig {
   artifactType: ArtifactType;
   /** Whether this agent gets the now-sdk `explain` / `query` MCP tools. */
   withTools: boolean;
+  /** Whether this agent also gets WebSearch / WebFetch (Architect only). */
+  webTools: boolean;
   maxTurns: number;
   systemPrompt: string;
   buildUserPrompt: (ctx: PipelineContext) => string;
@@ -32,6 +40,18 @@ function priorArtifact(ctx: PipelineContext, type: ArtifactType, heading: string
 const request = (ctx: PipelineContext) =>
   `# Customer feature request\n\n**Title:** ${ctx.title}\n\n**Description:**\n\n${ctx.description.trim()}\n`;
 
+/** Appended to rework stages so they fix exactly what was flagged. */
+function reworkSection(ctx: PipelineContext): string {
+  if (!ctx.reworkNote) return "";
+  return section(
+    `Rework — round ${ctx.reworkRound ?? 1}`,
+    `This work was sent back. You **must address every BLOCKER and every required ` +
+      `fix below, exactly** — do not change anything that already passed review, and ` +
+      `do not introduce new scope. When you are done, everything listed here must be ` +
+      `resolved.\n\n${ctx.reworkNote}`,
+  );
+}
+
 export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
   BA: {
     role: "BA",
@@ -39,6 +59,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     label: "Business Analyst",
     artifactType: ARTIFACT_TYPE.REQUIREMENTS,
     withTools: false,
+    webTools: false,
     maxTurns: 1,
     systemPrompt: SYSTEM_PROMPTS.BA,
     buildUserPrompt: (ctx) =>
@@ -51,12 +72,14 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     label: "Architect",
     artifactType: ARTIFACT_TYPE.DESIGN,
     withTools: true,
-    maxTurns: 30,
+    webTools: true,
+    maxTurns: 45,
     systemPrompt: SYSTEM_PROMPTS.ARCHITECT,
     buildUserPrompt: (ctx) =>
       `${request(ctx)}` +
       priorArtifact(ctx, ARTIFACT_TYPE.REQUIREMENTS, "Requirements (from the Business Analyst)") +
-      `\nProduce the solution design (ADR) now. Use \`explain\` to confirm Fluent syntax and \`query\` to check the instance for naming conflicts.`,
+      reworkSection(ctx) +
+      `\nProduce the solution design (ADR) now. Inventory the instance with \`query\` for OOB / existing records before designing anything custom, confirm Fluent syntax with \`explain\`, and use \`WebSearch\` / \`WebFetch\` against ServiceNow's own sites for the best-practice pattern. The ADR must include the "Implementation guidance for the build team" section.`,
   },
 
   SENIOR_DEV: {
@@ -65,13 +88,15 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     label: "Senior Developer",
     artifactType: ARTIFACT_TYPE.TASK_LIST,
     withTools: true,
+    webTools: false,
     maxTurns: 24,
     systemPrompt: SYSTEM_PROMPTS.SENIOR_DEV,
     buildUserPrompt: (ctx) =>
       `${request(ctx)}` +
       priorArtifact(ctx, ARTIFACT_TYPE.REQUIREMENTS, "Requirements (from the Business Analyst)") +
       priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
-      `\nProduce the implementation plan, file plan, and review checklist now.`,
+      reworkSection(ctx) +
+      `\nProduce the implementation plan, file plan, and review checklist now. Follow the Architect's "Implementation guidance for the build team" exactly.`,
   },
 
   DEVELOPER: {
@@ -80,13 +105,15 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     label: "Developer",
     artifactType: ARTIFACT_TYPE.CODE,
     withTools: true,
+    webTools: false,
     maxTurns: 55,
     systemPrompt: SYSTEM_PROMPTS.DEVELOPER,
     buildUserPrompt: (ctx) =>
       `${request(ctx)}` +
       priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
       priorArtifact(ctx, ARTIFACT_TYPE.TASK_LIST, "Implementation Plan (from the Senior Developer)") +
-      `\nImplement the task list now. Use \`explain\` for exact Fluent syntax. Emit ONLY file blocks in the required format.`,
+      reworkSection(ctx) +
+      `\nImplement the task list now. The Architect's "Implementation guidance for the build team" is authoritative — every construct, OOB reference, and flow step in it must appear in your code, in order. Use \`explain\` for exact Fluent syntax. Emit ONLY file blocks in the required format.`,
   },
 
   QA: {
@@ -95,6 +122,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     label: "QA",
     artifactType: ARTIFACT_TYPE.QA_REPORT,
     withTools: false,
+    webTools: false,
     maxTurns: 2,
     systemPrompt: SYSTEM_PROMPTS.QA,
     buildUserPrompt: (ctx) =>
@@ -103,7 +131,8 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
       priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
       priorArtifact(ctx, ARTIFACT_TYPE.TASK_LIST, "Implementation Plan + Review Checklist (from the Senior Developer)") +
       priorArtifact(ctx, ARTIFACT_TYPE.CODE, "Generated Code (from the Developer)") +
-      `\nProduce the QA report now. End with the single VERDICT line.`,
+      reworkSection(ctx) +
+      `\nProduce the QA report now. End with the VERDICT line, and — if NEEDS_REWORK — the REWORK_FROM line.`,
   },
 };
 

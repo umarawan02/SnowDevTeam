@@ -54,3 +54,11 @@ export function parseQaVerdict(text: string): QaVerdict {
   const m = text.match(/VERDICT:\s*(READY_FOR_HUMAN_REVIEW|NEEDS_REWORK)/);
   return (m?.[1] as QaVerdict) ?? null;
 }
+
+export type ReworkFrom = "ARCHITECT" | "SENIOR_DEV" | "DEVELOPER";
+
+/** The stage QA wants the rework to start from, from a `REWORK_FROM:` line. */
+export function parseReworkFrom(text: string): ReworkFrom | null {
+  const m = text.match(/REWORK_FROM:\s*(ARCHITECT|SENIOR_DEV|DEVELOPER)/);
+  return (m?.[1] as ReworkFrom) ?? null;
+}

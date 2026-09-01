@@ -43,7 +43,8 @@ export function ArtifactTabs({
     );
   }
 
-  const active = artifacts.find((a) => a.type === selected);
+  // Latest of the selected type — a rework loop can produce more than one.
+  const active = [...artifacts].reverse().find((a) => a.type === selected);
   const role = active ? ARTIFACT_META[active.type].role : null;
   const step = role ? steps.find((s) => s.role === role) : null;
   const dur = step ? durationLabel(step.startedAt, step.completedAt) : "";

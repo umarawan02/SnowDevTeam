@@ -7,8 +7,12 @@ export interface RunAgentInput {
   userPrompt: string;
   maxTurns: number;
   withTools: boolean;
+  /** Also allow WebSearch / WebFetch (Architect research). Implies withTools. */
+  webTools?: boolean;
   model?: string;
 }
+
+const WEB_TOOLS = ["WebSearch", "WebFetch"];
 
 export interface ToolCall {
   name: string;
@@ -34,7 +38,7 @@ export interface RunAgentResult {
  * step FAILED.
  */
 export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
-  const { systemPrompt, userPrompt, maxTurns, withTools } = input;
+  const { systemPrompt, userPrompt, maxTurns, withTools, webTools } = input;
   const model = input.model ?? config.ANTHROPIC_MODEL;
 
   const toolCalls: ToolCall[] = [];
@@ -49,14 +53,16 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       model,
       systemPrompt,
       maxTurns,
-      tools: [],
+      // `tools` is the base set of built-ins: [] disables all; webTools re-adds
+      // just WebSearch/WebFetch for the Architect's research.
+      tools: webTools ? WEB_TOOLS : [],
       settingSources: [],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
-      ...(withTools
+      ...(withTools || webTools
         ? {
             mcpServers: { nowsdk: nowsdkMcpServer },
-            allowedTools: NOWSDK_TOOL_NAMES,
+            allowedTools: [...NOWSDK_TOOL_NAMES, ...(webTools ? WEB_TOOLS : [])],
           }
         : {}),
     },

@@ -61,6 +61,24 @@ code. Violating any of these fails `now-sdk build`, which blocks deploy.
   → `TS303 Failed to parse property` / `TS213 Unsupported variable initializer`.
   Put the whole HTML in one backtick template literal instead.
 - Don't declare helper functions or factories in a `.now.ts` file.
+- **No bare statements.** A `.now.ts` file contains only imports, `const X = …`
+  declarations, and constructor calls. `void SOME_CONST` (to silence an
+  unused-variable warning), `console.log`, `if`/`for` at the top level → `TS222
+  Node kind "VoidExpression" is not allowed` / `TS244 Unsupported statement`. If
+  a `const` is only used in another file, **don't declare it here** — put the
+  sys_id literal inline where it's used, or declare it in the file that uses it.
+
+### Scoped-app boundaries — you can only create records for tables in `x_1460392_delivery`
+
+- `CatalogUiPolicy` / `UiPolicy` / `BusinessRule` / `Acl` on an **OOB table**
+  (`sysapproval_approver`, `sc_task`, `sc_req_item`, `task`, …) fails
+  `TS11: 'table' property should start with scope prefix 'x_1460392_delivery_'`.
+  A scoped app cannot own metadata on tables it didn't create.
+- To act on OOB records: use a **Flow** (flows run cross-scope), a
+  **record-producer / catalog-task action** inside the flow, or an
+  `EmailNotification` (allowed on OOB task tables). Do **not** design a UI
+  policy or business rule on `sysapproval_approver` or `sc_task` — move that
+  logic into the fulfillment flow.
 
 ### Catalog variables (`SingleLineTextVariable`, `MultiLineTextVariable`, `SelectBoxVariable`, `ReferenceVariable`, `DateVariable`, `CheckboxVariable`, `RequestedForVariable`)
 

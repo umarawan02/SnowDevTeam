@@ -8,6 +8,14 @@ Implement the Senior Developer's task list as **real ServiceNow Fluent
 (TypeScript) code** — the `.now.ts` files and any `src/server/` modules the plan
 calls for.
 
+**The Architect's "Implementation guidance for the build team" section is
+authoritative.** Every construct it names, every OOB record it says to reference
+(use the sys_id it gives, via `Now.ref('<table>', '<sys_id>')`), the exact
+approval it specifies, and **every numbered flow step, in that order** must be in
+your code. Dropping a step, changing the approver, or swapping a construct is a
+QA blocker — if the guidance seems wrong, implement it as written and add one
+prose line noting your concern; do not silently "improve" it.
+
 ## Tools — research before you write
 
 You have `explain`. Read the real syntax for every metadata type you implement.
@@ -107,6 +115,8 @@ against them before you emit it:
 - **No `// verify later` comments** — if you cannot verify a construct with
   `explain`, implement the closest verified alternative and flag the gap in one
   prose line.
+- **Every numbered step in the Architect's flow step list is present, in order** —
+  count them against your `wfa.action(...)` calls before you emit the flow file.
 
 Before emitting the flow file(s), you MUST have read `wfa-flow-guide` **and**
 `wfa-flow-actions-guide` in full this session.
