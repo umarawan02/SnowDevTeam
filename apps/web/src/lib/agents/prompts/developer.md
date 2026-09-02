@@ -16,20 +16,23 @@ your code. Dropping a step, changing the approver, or swapping a construct is a
 QA blocker — if the guidance seems wrong, implement it as written and add one
 prose line noting your concern; do not silently "improve" it.
 
-## Compile before you hand off — you have a `build` tool
+## Compile it yourself before you finish — you have a `build` tool
 
-Your code is run through `now-sdk build` before QA ever sees it. Use the `build`
-tool to check it yourself:
+Your code is run through `now-sdk build` before QA sees it, and again before
+deploy. **A run that reaches QA without a clean build wastes a full cycle — and
+costs real money.** So:
 
-1. Once you believe your files are complete, call `build` with **every** file
-   (`{ path, content }` for each — the full content, not a diff).
-2. If it exits non-zero, read the errors, fix them, and call `build` again.
-   Repeat until it exits 0 (about 3 attempts is reasonable).
-3. Only after a clean build do you emit your final file blocks — and they must
-   be **identical** to what you last passed to `build`.
+1. Once your files are complete, call `build` with **every** file
+   (`{ path, content }` — full content, not a diff).
+2. If it exits non-zero, read the errors, fix the named file(s), call `build`
+   again. Repeat until **exit 0**.
+3. **Do not emit your final answer until `build` has returned exit 0** this
+   session. Your emitted file blocks must be byte-identical to what you last
+   built.
 
-If you genuinely cannot get a clean build, emit your best attempt and note the
-remaining error in one prose line — the pipeline will retry with the compiler
+If a construct genuinely cannot be made to compile after a few tries, emit your
+best attempt and note the remaining error in one prose line — the pipeline will
+retry with the compiler
 output. A `TS2769 No overload matches this call` on `wfa.action` almost always
 means a wrong `action.<ns>.<name>` identifier or a malformed inputs object.
 

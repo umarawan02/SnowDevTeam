@@ -22,7 +22,7 @@ export interface PipelineResult {
 /** Auto rework rounds the pipeline will run itself before handing to the human. */
 const MAX_AUTO_REWORK = 2;
 /** Times the build gate re-runs the Developer to fix compile errors before failing. */
-const MAX_BUILD_FIX = 3;
+const MAX_BUILD_FIX = 2;
 
 const DEV_ORDER = ROLE_CONFIG.DEVELOPER.order;
 const QA_ORDER = ROLE_CONFIG.QA.order;
@@ -75,13 +75,17 @@ async function runBuildGate(ticketId: string, ctx: PipelineContext): Promise<{ o
     if (build.code === 0) return { ok: true, log: body };
     if (attempt === MAX_BUILD_FIX) return { ok: false, log: body };
 
-    // Re-run the Developer against the compiler errors, nothing else.
+    // Re-run the Developer against the compiler errors + its own failing code —
+    // no design / task-list re-send (buildFixPrompt in roles.ts).
+    const failingCode = ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "";
     await prisma.agentStep.deleteMany({ where: { ticketId, role: "DEVELOPER" } });
     await prisma.artifact.deleteMany({ where: { ticketId, type: ARTIFACT_TYPE.CODE } });
     delete ctx.artifacts[ARTIFACT_TYPE.CODE];
     ctx.buildErrors = build.diagnostics;
+    ctx.failingCode = failingCode;
     const res = await runStages(ticketId, ctx, DEV_ORDER, DEV_ORDER, new Set(), [], { gateBuild: false });
     ctx.buildErrors = undefined;
+    ctx.failingCode = undefined;
     if (!res.ok) return { ok: false, log: res.error ?? "developer re-run failed" };
   }
   return { ok: false, log: "build gate exhausted" };

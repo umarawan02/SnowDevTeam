@@ -36,7 +36,10 @@ const explainTool = tool(
     else if (mode === "peek") args.push("--peek");
     args.push("--format=raw");
 
-    const { stdout, stderr, code } = await runNowSdk(args, { timeoutMs: 60_000 });
+    // Full topics can be 40–60 KB; the essentials are up front and grounding.md
+    // already distils the common rules. Cap it to keep agent context lean.
+    const maxChars = mode === "full" ? 26_000 : 8_000;
+    const { stdout, stderr, code } = await runNowSdk(args, { timeoutMs: 60_000, maxChars });
     if (code !== 0 && !stdout.trim()) {
       return {
         content: [{ type: "text", text: `explain failed (exit ${code}):\n${stderr}` }],

@@ -1,6 +1,9 @@
 import { AGENT_ROLES, ARTIFACT_TYPE, type AgentRole, type ArtifactType } from "@/lib/constants";
 import { SYSTEM_PROMPTS } from "@/lib/agents/prompts";
 
+/** Cheaper model for the near-deterministic stages (template fill, sequencing). */
+const MODEL_FAST = "claude-haiku-4-5-20251001";
+
 export interface PipelineContext {
   title: string;
   description: string;
@@ -12,8 +15,10 @@ export interface PipelineContext {
    */
   reworkNote?: string;
   reworkRound?: number;
-  /** Set by the build gate when the Developer's code failed `now-sdk build`. */
+  /** Set by the build gate: the `now-sdk build` diagnostics + the failing code,
+   *  so the Developer re-runs cheaply (no design/task-list re-send). */
   buildErrors?: string;
+  failingCode?: string;
 }
 
 export interface RoleConfig {
@@ -27,6 +32,8 @@ export interface RoleConfig {
   webTools: boolean;
   /** Whether this agent gets the `build` tool — compile draft code (Developer only). */
   buildTool: boolean;
+  /** Default model tier for this role; a persona override still wins. */
+  model?: string;
   maxTurns: number;
   systemPrompt: string;
   buildUserPrompt: (ctx: PipelineContext) => string;
@@ -44,16 +51,8 @@ function priorArtifact(ctx: PipelineContext, type: ArtifactType, heading: string
 const request = (ctx: PipelineContext) =>
   `# Customer feature request\n\n**Title:** ${ctx.title}\n\n**Description:**\n\n${ctx.description.trim()}\n`;
 
-/** Appended to rework stages so they fix exactly what was flagged. */
+/** Appended to a rework stage so it fixes exactly what QA / the reviewer flagged. */
 function reworkSection(ctx: PipelineContext): string {
-  if (ctx.buildErrors) {
-    return section(
-      "Your last build failed — fix ONLY these compiler errors",
-      `\`now-sdk build\` rejected your code. Fix exactly the errors below and change ` +
-        `nothing else. Re-check every construct against \`explain\` and the ` +
-        `build-breaker list. Then emit the corrected file blocks.\n\n\`\`\`text\n${ctx.buildErrors}\n\`\`\``,
-    );
-  }
   if (!ctx.reworkNote) return "";
   return section(
     `Rework — round ${ctx.reworkRound ?? 1}`,
@@ -61,6 +60,27 @@ function reworkSection(ctx: PipelineContext): string {
       `fix below, exactly** — do not change anything that already passed review, and ` +
       `do not introduce new scope. When you are done, everything listed here must be ` +
       `resolved.\n\n${ctx.reworkNote}`,
+  );
+}
+
+/**
+ * A build-fix round: the Developer already produced design-conformant code that
+ * has a compile error. Send just that code + the errors — not the design and
+ * task list again.
+ */
+function buildFixPrompt(ctx: PipelineContext): string {
+  return (
+    request(ctx) +
+    section("Your current code — it does NOT compile", ctx.failingCode ?? "(missing)") +
+    section(
+      "`now-sdk build` errors — fix ONLY these",
+      "```text\n" + (ctx.buildErrors ?? "") + "\n```",
+    ) +
+    `\nEdit only the file(s) named in the errors; leave every other file byte-for-byte ` +
+    `as it is. Do not change scope, behaviour, or anything that already compiled. Use ` +
+    `\`explain\` if you need the correct syntax for the failing construct, then call ` +
+    `\`build\` to confirm exit 0. Re-emit the **complete** corrected file set in the ` +
+    `required file-block format.`
   );
 }
 
@@ -73,6 +93,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     withTools: false,
     webTools: false,
     buildTool: false,
+    model: MODEL_FAST,
     maxTurns: 1,
     systemPrompt: SYSTEM_PROMPTS.BA,
     buildUserPrompt: (ctx) =>
@@ -87,13 +108,13 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     withTools: true,
     webTools: true,
     buildTool: false,
-    maxTurns: 45,
+    maxTurns: 30,
     systemPrompt: SYSTEM_PROMPTS.ARCHITECT,
     buildUserPrompt: (ctx) =>
       `${request(ctx)}` +
       priorArtifact(ctx, ARTIFACT_TYPE.REQUIREMENTS, "Requirements (from the Business Analyst)") +
       reworkSection(ctx) +
-      `\nProduce the solution design (ADR) now. Inventory the instance with \`query\` for OOB / existing records before designing anything custom, confirm Fluent syntax with \`explain\`, and use \`WebSearch\` / \`WebFetch\` against ServiceNow's own sites for the best-practice pattern. The ADR must include the "Implementation guidance for the build team" section.`,
+      `\nProduce the solution design (ADR) now. Inventory the instance with \`query\` for OOB / existing records before designing anything custom, and confirm Fluent syntax with \`explain\`. The standard catalog-item + approval + fulfillment pattern is already in the Appendix — do **not** research it. The ADR must include the "Implementation guidance for the build team" section.`,
   },
 
   SENIOR_DEV: {
@@ -104,6 +125,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     withTools: true,
     webTools: false,
     buildTool: false,
+    model: MODEL_FAST,
     maxTurns: 24,
     systemPrompt: SYSTEM_PROMPTS.SENIOR_DEV,
     buildUserPrompt: (ctx) =>
@@ -125,11 +147,13 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     maxTurns: 55,
     systemPrompt: SYSTEM_PROMPTS.DEVELOPER,
     buildUserPrompt: (ctx) =>
-      `${request(ctx)}` +
-      priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
-      priorArtifact(ctx, ARTIFACT_TYPE.TASK_LIST, "Implementation Plan (from the Senior Developer)") +
-      reworkSection(ctx) +
-      `\nImplement the task list now. The Architect's "Implementation guidance for the build team" is authoritative — every construct, OOB reference, and flow step in it must appear in your code, in order. Use \`explain\` for exact Fluent syntax. Emit ONLY file blocks in the required format.`,
+      ctx.buildErrors && ctx.failingCode
+        ? buildFixPrompt(ctx)
+        : `${request(ctx)}` +
+          priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
+          priorArtifact(ctx, ARTIFACT_TYPE.TASK_LIST, "Implementation Plan (from the Senior Developer)") +
+          reworkSection(ctx) +
+          `\nImplement the task list now. The Architect's "Implementation guidance for the build team" is authoritative — every construct, OOB reference, and flow step in it must appear in your code, in order. Use \`explain\` for exact Fluent syntax and call \`build\` until it exits 0 before you finish. Emit ONLY file blocks in the required format.`,
   },
 
   QA: {

@@ -4,6 +4,8 @@ import { config } from "@/lib/config";
 import { getPersona, isAgentRole } from "@/lib/agents/personas";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { canEditAgents } from "@/lib/auth/rbac";
+import { ROLE_CONFIG } from "@/lib/agents/roles";
+import { modelLabel } from "@/lib/agents/models";
 import { AgentEditor } from "@/components/agents/AgentEditor";
 import type { PersonaJson } from "@/lib/types";
 
@@ -18,6 +20,7 @@ export default async function AgentEditPage({ params }: { params: Promise<{ role
 
   const persona = await getPersona(upper);
   const json = JSON.parse(JSON.stringify(persona)) as PersonaJson;
+  const roleDefaultModel = ROLE_CONFIG[upper].model ?? config.ANTHROPIC_MODEL;
 
   return (
     <div className="page">
@@ -30,7 +33,7 @@ export default async function AgentEditPage({ params }: { params: Promise<{ role
           <p className="lede">Changes take effect on the next pipeline run.</p>
         </div>
       </div>
-      <AgentEditor persona={json} defaultModelLabel={config.ANTHROPIC_MODEL} />
+      <AgentEditor persona={json} defaultModelLabel={modelLabel(roleDefaultModel)} />
     </div>
   );
 }

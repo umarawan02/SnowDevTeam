@@ -9,3 +9,9 @@ export const MODEL_CHOICES: { value: string; label: string }[] = [
 ];
 
 export const MODEL_VALUES = MODEL_CHOICES.map((c) => c.value);
+
+/** Short human label for a model id, e.g. "claude-haiku-4-5-20251001" → "Haiku 4.5". */
+export function modelLabel(id: string | null | undefined): string {
+  if (!id) return "Sonnet 5";
+  return MODEL_CHOICES.find((c) => c.value === id)?.label ?? id.replace(/^claude-/, "");
+}

@@ -1,10 +1,14 @@
 import type { AgentRole } from "@/lib/constants";
 import { SYSTEM_PROMPTS } from "@/lib/agents/prompts";
+import { ROLE_CONFIG } from "@/lib/agents/roles";
 import { getPersona } from "@/lib/agents/personas";
 
 export interface ResolvedAgent {
   systemPrompt: string;
-  /** Persona model override, or undefined to use config.ANTHROPIC_MODEL. */
+  /**
+   * Effective model: a persona override wins, else the role's default tier
+   * (roles.ts), else undefined → config.ANTHROPIC_MODEL.
+   */
   model?: string;
   personaName: string;
 }
@@ -26,7 +30,7 @@ export async function resolveAgent(role: AgentRole): Promise<ResolvedAgent> {
 
   return {
     systemPrompt: `${preamble}\n\n---\n\n${SYSTEM_PROMPTS[role]}`,
-    model: p.model ?? undefined,
+    model: p.model ?? ROLE_CONFIG[role].model ?? undefined,
     personaName: p.name,
   };
 }

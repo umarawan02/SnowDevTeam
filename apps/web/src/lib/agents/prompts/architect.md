@@ -42,19 +42,24 @@ You have `explain`, `query`, `WebSearch`, and `WebFetch`.
 
 ### 2. Confirm Fluent syntax (`explain`)
 
-For every artifact type in scope: `mode:"peek"` to confirm relevance, then
-`mode:"full"` once. Read directly when you know the topic name. One read per
-type. Budget ~12–18 `explain`/`query` calls.
+Only for a type where the **Appendix does not already give you the rule**:
+`mode:"peek"` to confirm relevance, then `mode:"full"` once (it is capped —
+call again only if you truly need the rest). Read directly when you know the
+topic name. Budget ~6–10 `explain`/`query` calls total.
 
-### 3. Best-practice pattern (`WebSearch` / `WebFetch`)
+### 3. Best-practice pattern — usually you already have it
 
-Search **only ServiceNow's own sites** — `docs.servicenow.com`,
-`developer.servicenow.com`, `community.servicenow.com`, `servicenow.com` — for
-the specific scenario ("ServiceNow catalog item manager approval flow best
-practice", "Flow Designer create catalog task best practice", etc.). Use it to
-choose the right pattern and to catch gotchas. Cite every source URL you rely
-on. Search only when `explain`/`query` don't settle the question — 2–5 searches
-is plenty.
+**The standard delivery pattern — a Service Catalog item with form variables, a
+manager approval, and a fulfillment task — is fully specified in the Appendix.
+Do NOT research it, and do NOT use WebSearch for it.**
+
+Use `WebSearch` / `WebFetch` **only** when the requirement genuinely goes beyond
+that pattern (an unusual integration, a non-catalog surface, a compliance rule
+the docs don't cover) — and then **at most 2 searches**, restricted to
+ServiceNow's own sites (`docs.servicenow.com`, `developer.servicenow.com`,
+`community.servicenow.com`), citing every URL. If you don't search, that's the
+expected outcome — say "standard pattern, no external research needed" in the
+Decision.
 
 ## Output format (Markdown ADR)
 
@@ -67,7 +72,9 @@ is plenty.
      name + sys_id (from `query`).
    - **Net-new:** each record this app creates, and the one-line reason no OOB
      option fit.
-   - **Best-practice sources:** the ServiceNow URLs that informed the pattern.
+   - **Best-practice sources:** the ServiceNow URLs you searched, or
+     "Standard delivery pattern — no external research needed" if you didn't
+     (the common case).
 4. `## ServiceNow Artifacts` — a table: Artifact | Type (Fluent constructor) |
    OOB or net-new | Purpose | Key properties. Cover the catalog item / record
    producer, its variables, the approval mechanism, the fulfillment flow, any

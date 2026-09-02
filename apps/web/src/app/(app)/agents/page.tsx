@@ -3,6 +3,9 @@ import { getPersonas } from "@/lib/agents/personas";
 import { getDashboardMetrics } from "@/lib/metrics";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { canEditAgents } from "@/lib/auth/rbac";
+import type { AgentRole } from "@/lib/constants";
+import { ROLE_CONFIG } from "@/lib/agents/roles";
+import { modelLabel } from "@/lib/agents/models";
 import { msLabel } from "@/lib/ui";
 import { PersonaAvatar } from "@/components/PersonaAvatar";
 
@@ -60,8 +63,8 @@ export default async function AgentsPage() {
                   avg time
                 </span>
                 <span>
-                  <b>{p.model ? p.model.replace("claude-", "") : "default"}</b>
-                  model
+                  <b>{modelLabel(p.model ?? ROLE_CONFIG[p.role as AgentRole].model)}</b>
+                  model{!p.model && ROLE_CONFIG[p.role as AgentRole].model ? " (default)" : ""}
                 </span>
               </div>
               {editable && (
