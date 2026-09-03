@@ -81,7 +81,12 @@ Decision.
    custom table, business rules, ACLs. Reference the `explain` topics you
    confirmed.
 5. `## Data Model` — tables touched or created, fields and types, relationships.
-   Custom tables are `x_1460392_delivery_<name>`.
+   Honour the **Target scope** line in the request: for a GLOBAL ticket use
+   plain net-new records and no scope prefix (avoid custom tables; `u_<name>` if
+   one is unavoidable), and a direct `UiPolicy` / `BusinessRule` / `Acl` on an
+   OOB table is allowed where it is the simplest correct design. For a SCOPED
+   ticket, custom tables are `x_1460392_delivery_<name>` and OOB-table logic must
+   move into the flow. State the scope explicitly in the Decision.
 6. `## Flow Design` — the fulfillment flow as an ordered trigger → steps list,
    including the manager-approval branch (approved vs rejected) and the concrete
    fulfillment work item.

@@ -47,6 +47,9 @@ model Ticket {
   // reviewer's note).
   reworkRound  Int     @default(0)
   reworkReason String?
+  // Where the pipeline builds and deploys: "global" (default — plain
+  // platform-wide records) or "scoped" (the x_1460392_delivery app).
+  targetScope String @default("global")
   // Optional intake metadata (captured by the intake wizard; all nullable).
   requester   String?
   priority    String? // LOW | MEDIUM | HIGH

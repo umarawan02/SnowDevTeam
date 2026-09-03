@@ -1,4 +1,11 @@
-import { AGENT_ROLES, ARTIFACT_TYPE, type AgentRole, type ArtifactType } from "@/lib/constants";
+import {
+  AGENT_ROLES,
+  ARTIFACT_TYPE,
+  DEFAULT_TARGET_SCOPE,
+  type AgentRole,
+  type ArtifactType,
+  type TargetScope,
+} from "@/lib/constants";
 import { SYSTEM_PROMPTS } from "@/lib/agents/prompts";
 
 /** Cheaper model for the near-deterministic stages (template fill, sequencing). */
@@ -9,6 +16,8 @@ export interface PipelineContext {
   description: string;
   /** Prior-stage artifacts, keyed by ArtifactType, in the order they were produced. */
   artifacts: Partial<Record<ArtifactType, string>>;
+  /** Where this ticket is built/deployed — "global" (default) or "scoped". */
+  targetScope: TargetScope;
   /**
    * Set when the pipeline is looping back for rework — the QA report and/or a
    * reviewer's note. Every rework stage must address it exactly.
@@ -50,6 +59,27 @@ function priorArtifact(ctx: PipelineContext, type: ArtifactType, heading: string
 
 const request = (ctx: PipelineContext) =>
   `# Customer feature request\n\n**Title:** ${ctx.title}\n\n**Description:**\n\n${ctx.description.trim()}\n`;
+
+/** The one authoring rule that differs by target scope — prepended to every stage. */
+function scopeSection(ctx: PipelineContext): string {
+  if ((ctx.targetScope ?? DEFAULT_TARGET_SCOPE) === "scoped") {
+    return section(
+      "Target scope — SCOPED",
+      "Build inside the scoped application `x_1460392_delivery` (\"AI Delivery App\"). " +
+        "Every net-new table/field carries the app prefix. A scoped app **cannot** own a " +
+        "UI policy, business rule, client script, or ACL on an OOB table (`sysapproval_approver`, " +
+        "`sc_task`, `sc_req_item`, …) — put that logic in a Flow instead.",
+    );
+  }
+  return section(
+    "Target scope — GLOBAL",
+    "Build plain platform-wide records. Do **not** prefix `Now.ID` keys, table names, or " +
+      "field names with `x_1460392_delivery_` — use short kebab-case ids (e.g. `laptop-request`). " +
+      "Avoid custom tables; if one is truly unavoidable, use a `u_` prefix. You may reference OOB " +
+      "records directly and, where the design calls for it, attach UI policies / business rules / " +
+      "ACLs to OOB tables — the scoped-app cross-scope restrictions do not apply.",
+  );
+}
 
 /** Appended to a rework stage so it fixes exactly what QA / the reviewer flagged. */
 function reworkSection(ctx: PipelineContext): string {
@@ -97,7 +127,9 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     maxTurns: 1,
     systemPrompt: SYSTEM_PROMPTS.BA,
     buildUserPrompt: (ctx) =>
-      `${request(ctx)}\nProduce the requirements document and acceptance criteria now.`,
+      `${request(ctx)}` +
+      scopeSection(ctx) +
+      `\nProduce the requirements document and acceptance criteria now. Note the target scope in your summary.`,
   },
 
   ARCHITECT: {
@@ -112,6 +144,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     systemPrompt: SYSTEM_PROMPTS.ARCHITECT,
     buildUserPrompt: (ctx) =>
       `${request(ctx)}` +
+      scopeSection(ctx) +
       priorArtifact(ctx, ARTIFACT_TYPE.REQUIREMENTS, "Requirements (from the Business Analyst)") +
       reworkSection(ctx) +
       `\nProduce the solution design (ADR) now. Inventory the instance with \`query\` for OOB / existing records before designing anything custom, and confirm Fluent syntax with \`explain\`. The standard catalog-item + approval + fulfillment pattern is already in the Appendix — do **not** research it. The ADR must include the "Implementation guidance for the build team" section.`,
@@ -130,6 +163,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     systemPrompt: SYSTEM_PROMPTS.SENIOR_DEV,
     buildUserPrompt: (ctx) =>
       `${request(ctx)}` +
+      scopeSection(ctx) +
       priorArtifact(ctx, ARTIFACT_TYPE.REQUIREMENTS, "Requirements (from the Business Analyst)") +
       priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
       reworkSection(ctx) +
@@ -150,6 +184,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
       ctx.buildErrors && ctx.failingCode
         ? buildFixPrompt(ctx)
         : `${request(ctx)}` +
+          scopeSection(ctx) +
           priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
           priorArtifact(ctx, ARTIFACT_TYPE.TASK_LIST, "Implementation Plan (from the Senior Developer)") +
           reworkSection(ctx) +
@@ -168,6 +203,7 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     systemPrompt: SYSTEM_PROMPTS.QA,
     buildUserPrompt: (ctx) =>
       `${request(ctx)}` +
+      scopeSection(ctx) +
       priorArtifact(ctx, ARTIFACT_TYPE.REQUIREMENTS, "Requirements (from the Business Analyst)") +
       priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
       priorArtifact(ctx, ARTIFACT_TYPE.TASK_LIST, "Implementation Plan + Review Checklist (from the Senior Developer)") +

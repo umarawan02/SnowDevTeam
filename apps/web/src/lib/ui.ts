@@ -87,6 +87,13 @@ export function roleMeta(role: string) {
   );
 }
 
+/** Human label for a ticket's target scope. */
+export function scopeLabel(scope: string | null | undefined): { label: string; full: string } {
+  return scope === "scoped"
+    ? { label: "Scoped", full: "Scoped app · x_1460392_delivery" }
+    : { label: "Global", full: "Global scope" };
+}
+
 export function relativeTime(iso: string | Date): string {
   const then = new Date(iso).getTime();
   const s = Math.round((Date.now() - then) / 1000);

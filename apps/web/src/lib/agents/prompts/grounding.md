@@ -11,13 +11,32 @@ memory when `explain` can give you the real syntax.
 ## This project
 
 - now-sdk project: `servicenow/delivery-app/`
-- Application scope: **`x_1460392_delivery`** — every custom table this app
-  creates is named `x_1460392_delivery_<something>`.
 - Fluent source lives in `src/fluent/**/*.now.ts`; server-side modules in
   `src/server/**/*.ts`. `keys.ts` is auto-generated at `src/fluent/generated/keys.ts`.
 - Build: `now-sdk build`. Deploy: `now-sdk install` (alias `now-sdk deploy`).
   Deploy is **human-gated in this product** and only happens in Phase 3 — never
   assume it has run.
+
+## Target scope
+
+Every ticket carries a **target scope**, given to you in the "Target scope" line
+of the request. It decides how you name and place records. The pipeline writes
+the matching `now.config.json` before it builds — you do not touch that file.
+
+**GLOBAL** (the default, most catalog items):
+- No scope prefix. `Now.ID` keys are short kebab-case (`laptop-request`,
+  `laptop-approval-flow`). Do **not** write `x_1460392_delivery_...` anywhere.
+- Prefer net-new global records: `CatalogItem`, `CatalogCategory`, `Flow`,
+  `EmailNotification`, catalog variables, `Role`. Avoid custom tables entirely
+  for the MVP; if one is genuinely unavoidable, name it `u_<name>`.
+- You **may** reference OOB records directly and attach a `UiPolicy` /
+  `BusinessRule` / `Acl` to an OOB table when that is the simplest correct
+  design — the scoped-app boundary rule below does **not** apply. A flow is
+  still often cleaner, but it is no longer forced.
+
+**SCOPED** (only when the ticket says so): the app is `x_1460392_delivery` —
+every custom table/field is `x_1460392_delivery_<something>`, and the
+"Scoped-app boundaries" rule below is in force.
 
 ## Fluent basics
 
@@ -68,7 +87,7 @@ code. Violating any of these fails `now-sdk build`, which blocks deploy.
   a `const` is only used in another file, **don't declare it here** — put the
   sys_id literal inline where it's used, or declare it in the file that uses it.
 
-### Scoped-app boundaries — you can only create records for tables in `x_1460392_delivery`
+### Scoped-app boundaries — SCOPED tickets only (skip this entirely for GLOBAL)
 
 - `CatalogUiPolicy` / `UiPolicy` / `BusinessRule` / `Acl` on an **OOB table**
   (`sysapproval_approver`, `sc_task`, `sc_req_item`, `task`, …) fails

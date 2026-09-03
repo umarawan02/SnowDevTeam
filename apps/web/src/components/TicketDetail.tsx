@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ticketStatusMeta, roleMeta, isTerminal, relativeTime } from "@/lib/ui";
+import { ticketStatusMeta, roleMeta, isTerminal, relativeTime, scopeLabel } from "@/lib/ui";
 import { parseQaVerdict, parseReworkFrom } from "@/lib/pipeline/parse";
 import type { TicketDetailJson, PersonaJson } from "@/lib/types";
 import { PipelineFlow } from "@/components/ticket/PipelineFlow";
@@ -73,6 +73,9 @@ export function TicketDetail({
           {ticket.priority && <span className="chip">{cap(ticket.priority)} priority</span>}
           {ticket.requester && <span className="chip">Requested by {ticket.requester}</span>}
           {ticket.category && <span className="chip">{ticket.category}</span>}
+          <span className="chip" title={scopeLabel(ticket.targetScope).full}>
+            {scopeLabel(ticket.targetScope).full}
+          </span>
           {ticket.reworkRound > 0 && (
             <span className="chip warn">Rework round {ticket.reworkRound}</span>
           )}
@@ -169,7 +172,7 @@ export function TicketDetail({
             <h3>What gets built</h3>
             <span className="hint">catalog item + fulfillment flow</span>
           </header>
-          <BuiltFlowDiagram code={codeArtifact.content} />
+          <BuiltFlowDiagram code={codeArtifact.content} targetScope={ticket.targetScope} />
         </section>
       )}
 

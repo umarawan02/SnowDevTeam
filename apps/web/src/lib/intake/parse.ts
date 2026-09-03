@@ -10,6 +10,8 @@ export interface IntakeReady {
   category?: string;
   approvals: string[];
   targetUsers?: string;
+  /** "global" (default) or "scoped" — where the pipeline builds it. */
+  targetScope: "global" | "scoped";
 }
 
 const BLOCK_RE = /<intake-ready>\s*([\s\S]*?)\s*<\/intake-ready>/i;
@@ -42,6 +44,7 @@ export function extractReadyBlock(text: string): { visible: string; ready: Intak
           ? raw.approvals.map((a) => String(a).slice(0, 60)).slice(0, 8)
           : [],
         targetUsers: raw.targetUsers ? String(raw.targetUsers).slice(0, 200) : undefined,
+        targetScope: String(raw.targetScope) === "scoped" ? "scoped" : "global",
       };
     }
   } catch {

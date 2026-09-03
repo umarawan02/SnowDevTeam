@@ -31,6 +31,13 @@ export const AGENT_ROLES = [
 ] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 
+// Where the pipeline builds/deploys a ticket's artifacts.
+// "global" — plain platform-wide records (the default, what most catalog
+// items want). "scoped" — the x_1460392_delivery application.
+export const TARGET_SCOPES = ["global", "scoped"] as const;
+export type TargetScope = (typeof TARGET_SCOPES)[number];
+export const DEFAULT_TARGET_SCOPE: TargetScope = "global";
+
 export const ARTIFACT_TYPE = {
   REQUIREMENTS: "REQUIREMENTS",
   DESIGN: "DESIGN",

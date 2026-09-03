@@ -244,6 +244,7 @@ function ReadyCard({
         {ready.category && <div><dt>Category</dt><dd>{ready.category}</dd></div>}
         <div><dt>Approvals</dt><dd>{ready.approvals.length ? ready.approvals.join(", ") : "None"}</dd></div>
         {ready.targetUsers && <div><dt>Requestable by</dt><dd>{ready.targetUsers}</dd></div>}
+        <div><dt>Scope</dt><dd>{ready.targetScope === "scoped" ? "Scoped app" : "Global"}</dd></div>
       </dl>
       <button className="btn ready-go" type="button" disabled={building} onClick={onBuild}>
         {building ? "Starting the pipeline…" : "Start development"}
@@ -281,6 +282,7 @@ function clientStrip(text: string): { visible: string; ready: IntakeMessageJson[
           category: raw.category ? String(raw.category) : undefined,
           approvals: Array.isArray(raw.approvals) ? raw.approvals.map(String) : [],
           targetUsers: raw.targetUsers ? String(raw.targetUsers) : undefined,
+          targetScope: raw.targetScope === "scoped" ? "scoped" : "global",
         },
       };
     }
