@@ -3,7 +3,9 @@ import {
   STEP_STATUS,
   TICKET_STATUS,
   ARTIFACT_TYPE,
+  DEFAULT_TARGET_SCOPE,
   type ArtifactType,
+  type TargetScope,
 } from "@/lib/constants";
 import { config } from "@/lib/config";
 import { PIPELINE, ROLE_CONFIG, type PipelineContext } from "@/lib/agents/roles";
@@ -33,6 +35,11 @@ const DERIVED_ARTIFACTS: ArtifactType[] = [
   ARTIFACT_TYPE.DEPLOY_VERIFICATION,
 ];
 
+/** `Ticket.targetScope` as a typed value (defaults to global for older rows). */
+function scopeOf(ticket: { targetScope?: string | null }): TargetScope {
+  return ticket.targetScope === "scoped" ? "scoped" : DEFAULT_TARGET_SCOPE;
+}
+
 function artifactTypesFrom(fromOrder: number): ArtifactType[] {
   return PIPELINE.filter((s) => s.order >= fromOrder).map((s) => s.artifactType);
 }
@@ -60,7 +67,7 @@ async function runBuildGate(ticketId: string, ctx: PipelineContext): Promise<{ o
       return { ok: false, log };
     }
 
-    const build = await buildWorkspace(files);
+    const build = await buildWorkspace(files, { scope: ctx.targetScope });
     const header =
       build.code === 0
         ? `# Build\n\n✓ \`now-sdk build\` passed (exit 0) — ${build.fileCount} file(s)`
@@ -156,6 +163,7 @@ async function runStages(
         withTools: stage.withTools,
         webTools: stage.webTools,
         buildTool: stage.buildTool,
+        scope: ctx.targetScope,
         model: agent.model,
       });
 
@@ -267,7 +275,12 @@ export async function runPipeline(
 
   await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.RUNNING } });
 
-  const ctx: PipelineContext = { title: ticket.title, description: ticket.description, artifacts: {} };
+  const ctx: PipelineContext = {
+    title: ticket.title,
+    description: ticket.description,
+    artifacts: {},
+    targetScope: scopeOf(ticket),
+  };
   const skipCompleted = canResume
     ? new Set(ticket.steps.filter((s) => s.status === STEP_STATUS.COMPLETE).map((s) => s.order))
     : new Set<number>();
@@ -339,6 +352,7 @@ export async function runRework(
     title: ticket.title,
     description: ticket.description,
     artifacts: {},
+    targetScope: scopeOf(ticket),
     reworkNote: directive,
     reworkRound: round,
   };

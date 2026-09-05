@@ -49,6 +49,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (ready?.category) detailLines.push(`- Category: ${ready.category}`);
   if (ready?.approvals?.length) detailLines.push(`- Approvals expected: ${ready.approvals.join(", ")}`);
   if (ready?.targetUsers) detailLines.push(`- Requestable by: ${ready.targetUsers}`);
+  const targetScope = ready?.targetScope === "scoped" ? "scoped" : "global";
+  detailLines.push(
+    `- Target scope: ${targetScope === "scoped" ? "scoped app (x_1460392_delivery)" : "global"}`,
+  );
   detailLines.push(`- Submitted by: ${user.name || user.email}`);
 
   const description = [
@@ -69,6 +73,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     requester: user.name || user.email,
     priority: ready?.priority ?? null,
     category: ready?.category ?? null,
+    targetScope,
     createdById: user.id,
   });
 

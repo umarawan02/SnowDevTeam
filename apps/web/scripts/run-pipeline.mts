@@ -2,7 +2,7 @@
  * Phase 1 end-to-end test harness.
  *
  *   pnpm --filter web pipeline
- *   pnpm --filter web pipeline "Title here" "Description here"
+ *   pnpm --filter web pipeline "Title here" "Description here" [global|scoped]
  *   pnpm --filter web pipeline --resume <ticketId>   # rerun only the failed/pending stages
  *
  * Creates (or resumes) a ticket, runs the agent pipeline to completion, then
@@ -38,8 +38,9 @@ async function main() {
   } else {
     const title = args[0]?.trim() || DEFAULT_TITLE;
     const description = args[1]?.trim() || DEFAULT_DESCRIPTION;
-    console.log(`\nCreating ticket: ${title}`);
-    const ticket = await createTicket({ title, description });
+    const targetScope = args[2]?.trim() === "scoped" ? "scoped" : "global";
+    console.log(`\nCreating ticket: ${title}  (scope: ${targetScope})`);
+    const ticket = await createTicket({ title, description, targetScope });
     ticketId = ticket.id;
     console.log(`  id = ${ticket.id}\n`);
   }

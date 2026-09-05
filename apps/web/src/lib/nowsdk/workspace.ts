@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { NOW_SDK_CWD } from "@/lib/config";
+import type { TargetScope } from "@/lib/constants";
 import { runNowSdk } from "@/lib/nowsdk/cli";
 import type { GeneratedFile } from "@/lib/pipeline/parse";
 
@@ -13,6 +14,63 @@ import type { GeneratedFile } from "@/lib/pipeline/parse";
 const FLUENT_DIR = path.join(NOW_SDK_CWD, "src", "fluent");
 const SERVER_DIR = path.join(NOW_SDK_CWD, "src", "server");
 const KEYS_FILE = path.join(FLUENT_DIR, "generated", "keys.ts");
+const CONFIG_FILE = path.join(NOW_SDK_CWD, "now.config.json");
+
+const SCOPED_FALLBACK: Record<string, unknown> = {
+  scope: "x_1460392_delivery",
+  scopeId: "f53ca6b11fdb4e81af25056bdf0f44ea",
+  name: "AI Delivery App",
+  tsconfigPath: "./src/server/tsconfig.json",
+};
+
+/** The on-disk config is the scoped-app baseline; read it once. If the file is
+ *  missing or somehow left on the global scope (crashed deploy), fall back. */
+const SCOPED_CONFIG: Record<string, unknown> = (() => {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) as Record<string, unknown>;
+    return typeof parsed.scope === "string" && parsed.scope.startsWith("x_") ? parsed : SCOPED_FALLBACK;
+  } catch {
+    return SCOPED_FALLBACK;
+  }
+})();
+
+// A global-scope SDK app is still its own app container with a real scopeId —
+// the literal "global" scopeId fails install ("RollbackContext invalid state").
+// This app ("AI Delivery Global", installed on the PDI) owns the net-new records
+// the pipeline builds for GLOBAL tickets; those records land in `sys_scope =
+// Global` and may reference OOB records freely.
+const GLOBAL_CONFIG: Record<string, unknown> = {
+  scope: "global",
+  scopeId: "a53b8a582a264cb4a8a677e40196a818",
+  name: "AI Delivery Global",
+  // "Must be 2.0.0+ for Global apps" — per `now-sdk explain now-config-reference`.
+  packageResolverVersion: "2.0.0",
+  tsconfigPath: "./src/server/tsconfig.json",
+};
+
+function configFor(scope: TargetScope): Record<string, unknown> {
+  return scope === "global" ? GLOBAL_CONFIG : SCOPED_CONFIG;
+}
+
+export function snapshotConfig(): string | null {
+  try {
+    return fs.existsSync(CONFIG_FILE) ? fs.readFileSync(CONFIG_FILE, "utf8") : null;
+  } catch {
+    return null;
+  }
+}
+export function restoreConfig(snap: string | null): void {
+  try {
+    if (snap != null) fs.writeFileSync(CONFIG_FILE, snap, "utf8");
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Point the workspace at the global or the scoped app before a build. */
+export function writeProjectConfig(scope: TargetScope): void {
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(configFor(scope), null, 4) + "\n", "utf8");
+}
 
 let chain: Promise<unknown> = Promise.resolve();
 /** Run `fn` after every earlier workspace operation has finished. */
@@ -97,10 +155,15 @@ function extractDiagnostics(out: string): string {
  * restored afterwards. For the build gate and the Developer's `build` tool;
  * `deployTicket` orchestrates its own build + install + keys.
  */
-export function buildWorkspace(files: GeneratedFile[]): Promise<BuildResult> {
+export function buildWorkspace(
+  files: GeneratedFile[],
+  opts: { scope?: TargetScope } = {},
+): Promise<BuildResult> {
   return withWorkspaceLock(async () => {
     const keys = snapshotKeys();
+    const cfg = snapshotConfig();
     try {
+      if (opts.scope) writeProjectConfig(opts.scope);
       const removed = cleanWorkspace();
       writeGeneratedFiles(files);
       const { stdout, stderr, code } = await runNowSdk(["build"], {
@@ -118,6 +181,7 @@ export function buildWorkspace(files: GeneratedFile[]): Promise<BuildResult> {
       };
     } finally {
       restoreKeys(keys);
+      restoreConfig(cfg);
     }
   });
 }

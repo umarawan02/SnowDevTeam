@@ -11,7 +11,7 @@ servicenow.com) before designing anything custom, and hands the build team an
 authoritative *Implementation guidance* spec. The **Developer**'s code is run
 through `now-sdk build` **before QA sees it** (the Developer also has a `build`
 tool to self-check); a compile failure re-runs the Developer against the errors,
-up to 3 times, then fails the ticket at that stage. When **QA** returns
+up to 2 times, then fails the ticket at that stage. When **QA** returns
 `NEEDS_REWORK`, the pipeline **loops back automatically** (up to 2 rounds) from
 the stage QA points at, with the findings as a must-fix directive; a reviewer
 can also **Send back for rework** from the gate.
@@ -21,6 +21,21 @@ Submitting a request in the browser runs the 5 agents, the human reviews every
 artifact, and clicking **Approve** builds + deploys a real catalog item and flow
 to the PDI (verified by a post-deploy query). See `BUILD_PROMTP.md` for the phase
 plan and `docs/phase4-validation.md` for the end-to-end validation write-up.
+
+### Target scope
+
+Each request carries a **target scope**, chosen in the intake chat and defaulting
+to **global**:
+
+| Scope | Where it builds | now.config.json |
+|---|---|---|
+| **global** (default) | plain platform-wide records (`sys_scope = Global`), owned by the tracking app **AI Delivery Global** (`a53b8a58…`). Agents use no scope prefix and may reference OOB records directly. | `{ scope: "global", scopeId: "a53b8a58…", packageResolverVersion: "2.0.0" }` |
+| **scoped** | the **AI Delivery App** (`x_1460392_delivery`) — prefixed tables, OOB-table logic must live in a flow. | the committed `servicenow/delivery-app/now.config.json` |
+
+The pipeline swaps `now.config.json` per ticket at build/deploy time and
+snapshot-restores it, so the committed file always stays on the scoped app.
+One shared now-sdk workspace still means `keys.ts` churns when consecutive
+tickets target different scopes — an accepted MVP limitation.
 
 ### The app (`apps/web`)
 

@@ -1,5 +1,6 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import type { TargetScope } from "@/lib/constants";
 import { runNowSdk } from "@/lib/nowsdk/cli";
 import { buildWorkspace } from "@/lib/nowsdk/workspace";
 import { parseGeneratedFiles } from "@/lib/pipeline/parse";
@@ -82,50 +83,60 @@ const queryTool = tool(
   { annotations: { readOnlyHint: true }, alwaysLoad: true },
 );
 
-const buildTool = tool(
-  "build",
-  "Compile the ServiceNow Fluent files you have written. Pass EVERY file you " +
-    "intend to emit (path + full content). Runs `now-sdk build` and returns the " +
-    "compiler output. Call this once you think your code is complete; if it " +
-    "reports errors, fix them and call it again until it exits 0. It does not " +
-    "deploy anything.",
-  {
-    files: z
-      .array(z.object({ path: z.string(), content: z.string() }))
-      .min(1)
-      .describe("Every generated file: { path: 'src/fluent/...', content: '<full file>' }"),
-  },
-  async ({ files }) => {
-    // Reuse the parser's path allow-list by round-tripping through file blocks.
-    const blocks = files
-      .map((f) => `=== FILE: ${f.path} ===\n\`\`\`typescript\n${f.content}\n\`\`\`\n=== END FILE ===`)
-      .join("\n\n");
-    const { files: valid, warnings } = parseGeneratedFiles(blocks);
-    if (valid.length === 0) {
+const makeBuildTool = (scope?: TargetScope) =>
+  tool(
+    "build",
+    "Compile the ServiceNow Fluent files you have written. Pass EVERY file you " +
+      "intend to emit (path + full content). Runs `now-sdk build` and returns the " +
+      "compiler output. Call this once you think your code is complete; if it " +
+      "reports errors, fix them and call it again until it exits 0. It does not " +
+      "deploy anything.",
+    {
+      files: z
+        .array(z.object({ path: z.string(), content: z.string() }))
+        .min(1)
+        .describe("Every generated file: { path: 'src/fluent/...', content: '<full file>' }"),
+    },
+    async ({ files }) => {
+      // Reuse the parser's path allow-list by round-tripping through file blocks.
+      const blocks = files
+        .map((f) => `=== FILE: ${f.path} ===\n\`\`\`typescript\n${f.content}\n\`\`\`\n=== END FILE ===`)
+        .join("\n\n");
+      const { files: valid, warnings } = parseGeneratedFiles(blocks);
+      if (valid.length === 0) {
+        return {
+          content: [{ type: "text", text: `No valid files to build.\n${warnings.join("\n")}` }],
+          isError: true,
+        };
+      }
+      const r = await buildWorkspace(valid, { scope });
+      const head =
+        r.code === 0
+          ? `✓ now-sdk build passed (exit 0) · ${r.fileCount} file(s)`
+          : `✗ now-sdk build FAILED (exit ${r.code}) — fix these and call build again`;
+      const body = [r.stdout, r.stderr].filter(Boolean).join("\n").slice(0, 12_000);
       return {
-        content: [{ type: "text", text: `No valid files to build.\n${warnings.join("\n")}` }],
-        isError: true,
+        content: [{ type: "text", text: `${head}\n\n${body}` }],
+        ...(r.code === 0 ? {} : { isError: true }),
       };
-    }
-    const r = await buildWorkspace(valid);
-    const head =
-      r.code === 0
-        ? `✓ now-sdk build passed (exit 0) · ${r.fileCount} file(s)`
-        : `✗ now-sdk build FAILED (exit ${r.code}) — fix these and call build again`;
-    const body = [r.stdout, r.stderr].filter(Boolean).join("\n").slice(0, 12_000);
-    return {
-      content: [{ type: "text", text: `${head}\n\n${body}` }],
-      ...(r.code === 0 ? {} : { isError: true }),
-    };
-  },
-  { annotations: { readOnlyHint: false }, alwaysLoad: true },
-);
+    },
+    { annotations: { readOnlyHint: false }, alwaysLoad: true },
+  );
 
-export const nowsdkMcpServer = createSdkMcpServer({
-  name: "nowsdk",
-  version: "1.0.0",
-  tools: [explainTool, queryTool, buildTool],
-});
+/**
+ * Fresh in-process `nowsdk` MCP server for one agent run. `scope` fixes which
+ * `now.config.json` the Developer's `build` tool compiles against.
+ */
+export function createNowsdkMcpServer(opts: { scope?: TargetScope } = {}) {
+  return createSdkMcpServer({
+    name: "nowsdk",
+    version: "1.0.0",
+    tools: [explainTool, queryTool, makeBuildTool(opts.scope)],
+  });
+}
+
+/** Default (scope-agnostic) server for callers that don't build. */
+export const nowsdkMcpServer = createNowsdkMcpServer();
 
 export const NOWSDK_TOOL_NAMES = ["mcp__nowsdk__explain", "mcp__nowsdk__query"];
 /** Given to the Developer only — an actual `now-sdk build` of its draft code. */

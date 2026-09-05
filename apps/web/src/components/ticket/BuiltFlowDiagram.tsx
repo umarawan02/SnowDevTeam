@@ -35,7 +35,7 @@ function StepNode({ data }: NodeProps<Node<StepData>>) {
 }
 const nodeTypes = { step: StepNode };
 
-export function BuiltFlowDiagram({ code }: { code: string }) {
+export function BuiltFlowDiagram({ code, targetScope }: { code: string; targetScope?: string }) {
   const parsed: ParsedFlow = useMemo(() => parseGeneratedFlow(code), [code]);
 
   const { nodes, edges } = useMemo(() => {
@@ -89,6 +89,12 @@ export function BuiltFlowDiagram({ code }: { code: string }) {
       </div>
 
       <aside className="bf-side">
+        <div className="bf-block">
+          <h4>Target scope</h4>
+          <p className="bf-name-row">
+            {targetScope === "scoped" ? "Scoped app · x_1460392_delivery" : "Global"}
+          </p>
+        </div>
         {parsed.catalogItemName && (
           <div className="bf-block">
             <h4>Catalog item</h4>

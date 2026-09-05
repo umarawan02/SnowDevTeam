@@ -1,6 +1,12 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "@/lib/config";
-import { nowsdkMcpServer, NOWSDK_TOOL_NAMES, NOWSDK_BUILD_TOOL } from "@/lib/nowsdk/mcp";
+import type { TargetScope } from "@/lib/constants";
+import {
+  createNowsdkMcpServer,
+  nowsdkMcpServer,
+  NOWSDK_TOOL_NAMES,
+  NOWSDK_BUILD_TOOL,
+} from "@/lib/nowsdk/mcp";
 
 export interface RunAgentInput {
   systemPrompt: string;
@@ -11,6 +17,8 @@ export interface RunAgentInput {
   webTools?: boolean;
   /** Also allow the `build` tool (Developer — compile draft code). Implies withTools. */
   buildTool?: boolean;
+  /** Target scope for the `build` tool's `now-sdk build` (Developer). */
+  scope?: TargetScope;
   model?: string;
 }
 
@@ -40,8 +48,12 @@ export interface RunAgentResult {
  * step FAILED.
  */
 export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
-  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool } = input;
+  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool, scope } = input;
   const model = input.model ?? config.ANTHROPIC_MODEL;
+
+  // The build tool compiles against a specific now.config.json — give this run
+  // its own MCP server pinned to that scope. Other runs share the default.
+  const mcpServer = buildTool ? createNowsdkMcpServer({ scope }) : nowsdkMcpServer;
 
   const toolCalls: ToolCall[] = [];
   const assistantText: string[] = [];
@@ -63,7 +75,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       allowDangerouslySkipPermissions: true,
       ...(withTools || webTools || buildTool
         ? {
-            mcpServers: { nowsdk: nowsdkMcpServer },
+            mcpServers: { nowsdk: mcpServer },
             allowedTools: [
               ...NOWSDK_TOOL_NAMES,
               ...(buildTool ? [NOWSDK_BUILD_TOOL] : []),

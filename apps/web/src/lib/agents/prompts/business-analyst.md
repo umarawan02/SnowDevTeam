@@ -50,7 +50,8 @@ MAINTENANCE
 ## Output format (Markdown)
 
 1. `# Requirements: <service name>`
-2. `## Summary` — 2–3 sentences.
+2. `## Summary` — 2–3 sentences. State the **target scope** (global or scoped)
+   from the request's "Target scope" line.
 3. `## Requirements` — the adapted template above, fully filled in.
 4. `## Acceptance Criteria` — a numbered list. Each item must be **independently
    testable** and written so QA can turn it into a test case (Given / When / Then

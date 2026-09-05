@@ -1,4 +1,4 @@
-import type { AgentRole, ArtifactType, StepStatus, TicketStatus } from "@/lib/constants";
+import type { AgentRole, ArtifactType, StepStatus, TargetScope, TicketStatus } from "@/lib/constants";
 
 // JSON-serialized shapes as returned by the API routes (dates are ISO strings).
 
@@ -25,6 +25,7 @@ export interface TicketJson {
   title: string;
   description: string;
   status: TicketStatus;
+  targetScope: TargetScope;
   reviewNote: string | null;
   reworkRound: number;
   reworkReason: string | null;
@@ -44,6 +45,7 @@ export interface TicketListItemJson {
   id: string;
   title: string;
   status: TicketStatus;
+  targetScope: TargetScope;
   priority: string | null;
   requester: string | null;
   category: string | null;
@@ -64,6 +66,7 @@ export interface IntakeMessageJson {
     category?: string;
     approvals: string[];
     targetUsers?: string;
+    targetScope: "global" | "scoped";
   } | null;
   createdAt: string;
 }

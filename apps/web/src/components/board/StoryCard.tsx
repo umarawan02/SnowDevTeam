@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AGENT_ROLES } from "@/lib/constants";
-import { ticketStatusMeta, relativeTime } from "@/lib/ui";
+import { ticketStatusMeta, relativeTime, scopeLabel } from "@/lib/ui";
 import { PersonaAvatar } from "@/components/PersonaAvatar";
 import type { TicketListItemJson, PersonaJson } from "@/lib/types";
 
@@ -28,6 +28,11 @@ export function StoryCard({
           </span>
         )}
         {ticket.requester && <span className="chip">{ticket.requester}</span>}
+        {ticket.targetScope === "scoped" && (
+          <span className="chip" title={scopeLabel(ticket.targetScope).full}>
+            {scopeLabel(ticket.targetScope).label}
+          </span>
+        )}
         {ticket.reworkRound > 0 && <span className="chip warn">rework ×{ticket.reworkRound}</span>}
         <span className={`chip ${meta.tone}`}>{meta.label}</span>
       </div>

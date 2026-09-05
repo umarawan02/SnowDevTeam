@@ -1,7 +1,9 @@
 import { runNowSdk } from "@/lib/nowsdk/cli";
 import { config } from "@/lib/config";
+import type { TargetScope } from "@/lib/constants";
+import type { KeyRecord } from "@/lib/nowsdk/keys";
 
-const SCOPE = "x_1460392_delivery";
+const SCOPED_APP = "x_1460392_delivery";
 
 interface QueryOutcome {
   table: string;
@@ -11,7 +13,7 @@ interface QueryOutcome {
   raw: string;
 }
 
-async function scopeQuery(table: string, query: string, fields: string): Promise<QueryOutcome> {
+async function snQuery(table: string, query: string, fields: string): Promise<QueryOutcome> {
   const { stdout, stderr, code } = await runNowSdk(
     ["query", table, "-q", query, "-f", fields, "--limit", "50", "-o", "json"],
     { timeoutMs: 60_000, maxChars: 12_000 },
@@ -26,80 +28,138 @@ async function scopeQuery(table: string, query: string, fields: string): Promise
 }
 
 export interface DeploymentVerification {
-  /** True only if the scoped app row exists AND at least one catalog item is in scope. */
+  /** True only if this build's catalog item(s) resolve on the instance and are active. */
   confirmed: boolean;
   reason: string;
   markdown: string;
-  app: QueryOutcome;
-  catalogItems: QueryOutcome;
-  flows: QueryOutcome;
-  tables: QueryOutcome;
+}
+
+function idQuery(ids: string[]): string {
+  return ids.map((id) => `sys_id=${id}`).join("^OR");
 }
 
 /**
- * Post-deploy check: a clean `now-sdk install` exit code is not evidence. Query
- * the instance for what should now exist in the app scope.
+ * Post-deploy check: a clean `now-sdk install` exit code is not evidence. Look
+ * up the exact sys_ids this build created (from the keys.ts diff) and confirm
+ * they exist and are active on the instance — scope-agnostic.
  */
-export async function verifyDeployment(): Promise<DeploymentVerification> {
-  const [app, catalogItems, flows, tables] = await Promise.all([
-    scopeQuery("sys_app", `scope=${SCOPE}`, "name,scope,version,active"),
-    scopeQuery("sc_cat_item", `sys_scope.scope=${SCOPE}`, "name,sys_id,active,sys_class_name"),
-    scopeQuery("sys_hub_flow", `sys_scope.scope=${SCOPE}`, "name,sys_id,active,type"),
-    scopeQuery("sys_db_object", `nameSTARTSWITH${SCOPE}_`, "name,label,sys_id"),
-  ]);
+export async function verifyDeployment(opts: {
+  scope: TargetScope;
+  /** Net-new records from the keys.ts diff for this build. */
+  created: KeyRecord[];
+  /** Every record in keys.ts after the build — fallback when `created` is empty
+   *  (e.g. a re-deploy where the records were already in the baseline). */
+  allRecords?: KeyRecord[];
+}): Promise<DeploymentVerification> {
+  const { scope, created } = opts;
+  const byTable = (recs: KeyRecord[], t: string) => recs.filter((r) => r.table === t).map((r) => r.id);
+  const pick = (t: string) => {
+    const net = byTable(created, t);
+    return net.length > 0 ? net : byTable(opts.allRecords ?? [], t);
+  };
+  const catItemIds = pick("sc_cat_item");
+  const flowIds = pick("sys_hub_flow");
+  const tableIds = pick("sys_db_object");
 
-  const appOk = app.records.length > 0;
-  const hasCatalogItem = catalogItems.records.length > 0;
-  const confirmed = appOk && hasCatalogItem;
-  const reason = confirmed
-    ? "Scoped app installed and at least one catalog item is present."
-    : !appOk
-      ? `No sys_app row for scope ${SCOPE} — the install did not land.`
-      : `App installed but no catalog item found in scope ${SCOPE}.`;
+  const queries: Promise<QueryOutcome>[] = [];
+  const catIdx = catItemIds.length ? queries.push(snQuery("sc_cat_item", idQuery(catItemIds), "name,sys_id,active,sys_scope.scope")) - 1 : -1;
+  const flowIdx = flowIds.length ? queries.push(snQuery("sys_hub_flow", idQuery(flowIds), "name,sys_id,active")) - 1 : -1;
+  const tableIdx = tableIds.length ? queries.push(snQuery("sys_db_object", idQuery(tableIds), "name,label,sys_id")) - 1 : -1;
+  const appIdx =
+    scope === "scoped"
+      ? queries.push(snQuery("sys_app", `scope=${SCOPED_APP}`, "name,scope,version,active")) - 1
+      : -1;
 
-  const list = (o: QueryOutcome, nameKey = "name") =>
-    o.records.length === 0
+  const results = await Promise.all(queries);
+  const catItems = catIdx >= 0 ? results[catIdx] : null;
+  const flows = flowIdx >= 0 ? results[flowIdx] : null;
+  const tables = tableIdx >= 0 ? results[tableIdx] : null;
+  const app = appIdx >= 0 ? results[appIdx] : null;
+
+  const isActive = (r: Record<string, unknown>) => r.active === true || r.active === "true";
+  const foundCat = catItems?.records ?? [];
+  const activeCat = foundCat.filter(isActive);
+
+  const appOk = scope === "global" || (app?.records.length ?? 0) > 0;
+  const catExpected = catItemIds.length;
+  const catOk = catExpected > 0 && activeCat.length >= catExpected;
+  const confirmed = appOk && catOk;
+
+  const reason = !appOk
+    ? `No sys_app row for scope ${SCOPED_APP} — the scoped install did not land.`
+    : catExpected === 0
+      ? "This build declared no catalog item — nothing to confirm."
+      : catOk
+        ? `All ${catExpected} catalog item(s) resolve on the instance and are active.`
+        : `Expected ${catExpected} active catalog item(s); found ${activeCat.length}.`;
+
+  const list = (recs: Record<string, unknown>[], nameKey = "name") =>
+    recs.length === 0
       ? "_(none)_"
-      : o.records
-          .map((r) => `- \`${String(r[nameKey] ?? "?")}\` — \`${String(r.sys_id ?? "?")}\``)
+      : recs
+          .map(
+            (r) =>
+              `- \`${String(r[nameKey] ?? "?")}\` — \`${String(r.sys_id ?? "?")}\`` +
+              (r["sys_scope.scope"] ? ` · scope: \`${String(r["sys_scope.scope"])}\`` : "") +
+              (r.active !== undefined ? ` (active: ${String(r.active)})` : ""),
+          )
           .join("\n");
+
+  const declaredRecs = created.length > 0 ? created : (opts.allRecords ?? []);
+  const declared = (t: string) =>
+    declaredRecs.filter((r) => r.table === t).map((r) => `- \`${r.key}\` — \`${r.id}\``).join("\n") ||
+    "_(none)_";
 
   const markdown = [
     `# Deploy Verification`,
     ``,
-    `Instance: \`${config.SN_INSTANCE_URL ?? "(PDI)"}\`  ·  scope: \`${SCOPE}\``,
+    `Instance: \`${config.SN_INSTANCE_URL ?? "(PDI)"}\`  ·  scope: \`${scope === "scoped" ? SCOPED_APP : "global"}\``,
     `Checked: ${new Date().toISOString()}`,
     ``,
     `**Result: ${confirmed ? "CONFIRMED" : "NOT CONFIRMED"}** — ${reason}`,
     ``,
-    `## Scoped application (\`sys_app\`)`,
-    app.records.length
-      ? app.records
-          .map((r) => `- \`${String(r.name)}\` v\`${String(r.version ?? "?")}\` (active: ${String(r.active)})`)
-          .join("\n")
-      : "_(not found)_",
+    `## Records checked${created.length === 0 ? " (full keys.ts — re-deploy)" : " (keys.ts diff)"}`,
     ``,
-    `## Catalog items (\`sc_cat_item\`) — ${catalogItems.records.length}`,
-    list(catalogItems),
+    `**Catalog items**`,
+    declared("sc_cat_item"),
     ``,
-    `## Flows (\`sys_hub_flow\`) — ${flows.records.length}`,
-    list(flows),
+    `**Flows**`,
+    declared("sys_hub_flow"),
     ``,
-    `## Custom tables (\`sys_db_object\`) — ${tables.records.length}`,
-    list(tables),
+    `**Custom tables**`,
+    declared("sys_db_object"),
+    ``,
+    ...(scope === "scoped"
+      ? [
+          `## Scoped application (\`sys_app\`)`,
+          app && app.records.length
+            ? app.records
+                .map(
+                  (r) =>
+                    `- \`${String(r.name)}\` v\`${String(r.version ?? "?")}\` (active: ${String(r.active)})`,
+                )
+                .join("\n")
+            : "_(not found)_",
+          ``,
+        ]
+      : []),
+    `## Catalog items found on instance — ${foundCat.length}/${catExpected}`,
+    list(foundCat),
+    ``,
+    `## Flows found on instance — ${flows?.records.length ?? 0}/${flowIds.length}`,
+    list(flows?.records ?? []),
+    ``,
+    `## Custom tables found on instance — ${tables?.records.length ?? 0}/${tableIds.length}`,
+    list(tables?.records ?? []),
     ``,
     `---`,
     ``,
     `## Raw query output`,
     ``,
-    ...[app, catalogItems, flows, tables].flatMap((o) => [
-      `### \`${o.table}\` — \`${o.query}\``,
-      "```json",
-      o.raw,
-      "```",
-      "",
-    ]),
+    ...[app, catItems, flows, tables]
+      .filter((o): o is QueryOutcome => o != null)
+      .flatMap((o) => [`### \`${o.table}\` — \`${o.query}\``, "```json", o.raw, "```", ""]),
   ].join("\n");
 
-  return { confirmed, reason, markdown, app, catalogItems, flows, tables };
+  return { confirmed, reason, markdown };
 }

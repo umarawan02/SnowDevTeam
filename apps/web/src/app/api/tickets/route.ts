@@ -14,6 +14,7 @@ const CreateBody = z.object({
   category: z.string().trim().max(80).optional(),
   approvals: z.array(z.string().max(60)).max(8).optional(),
   targetUsers: z.string().trim().max(200).optional(),
+  targetScope: z.enum(["global", "scoped"]).optional(),
 });
 
 export async function GET() {
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
   }
 
   const { title, description, priority, category, approvals, targetUsers } = parsed.data;
+  const targetScope = parsed.data.targetScope ?? "global";
   const requester = parsed.data.requester || user.name || user.email;
 
   // Fold the structured intake answers into the description so the BA sees them,
@@ -55,6 +57,7 @@ export async function POST(req: Request) {
   if (approvals && approvals.length) extras.push(`- Approvals expected: ${approvals.join(", ")}`);
   if (priority) extras.push(`- Priority: ${priority}`);
   if (category) extras.push(`- Category: ${category}`);
+  extras.push(`- Target scope: ${targetScope === "scoped" ? "scoped app (x_1460392_delivery)" : "global"}`);
   const fullDescription = extras.length
     ? `${description.trim()}\n\n## Intake details\n\n${extras.join("\n")}`
     : description;
@@ -65,6 +68,7 @@ export async function POST(req: Request) {
     requester: requester ?? null,
     priority: priority ?? null,
     category: category ?? null,
+    targetScope,
     createdById: user.id,
   });
 
