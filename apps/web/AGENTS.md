@@ -6,4 +6,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
+phases 3–6 of refactor_brief.md are superseded by it:
+Read NATIVE_ENGINE_BRIEF.md in full. Phases 1 and 2 of refactor_brief.md are done and stay; this file replaces its phases 3-6. Plan Phase 3 only — the ServiceNow REST client, scope control and update-set session — and include the smoke-test scripts from the "Open items" section. Wait for my approval before writing code.
 <!-- END:nextjs-agent-rules -->
