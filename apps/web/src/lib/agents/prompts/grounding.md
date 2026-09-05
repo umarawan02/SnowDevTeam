@@ -10,12 +10,14 @@ memory when `explain` can give you the real syntax.
 
 ## This project
 
-- now-sdk project: `servicenow/delivery-app/`
+- You are working inside an **existing** customer-owned now-sdk project — it
+  already contains delivered work (other tickets' `src/fluent/**` directories,
+  plus imported `metadata/*.xml` for records that are live on the instance).
+  Your job **adds** to it.
 - Fluent source lives in `src/fluent/**/*.now.ts`; server-side modules in
   `src/server/**/*.ts`. `keys.ts` is auto-generated at `src/fluent/generated/keys.ts`.
-- Build: `now-sdk build`. Deploy: `now-sdk install` (alias `now-sdk deploy`).
-  Deploy is **human-gated in this product** and only happens in Phase 3 — never
-  assume it has run.
+- Build: `now-sdk build` (compiles the **whole** project). Deploy: `now-sdk
+  install`. Deploy is **human-gated in this product** — never assume it has run.
 
 ## Target scope
 
@@ -242,6 +244,13 @@ is installed on, through future upgrades. Whether that's correct depends on
 install history, which the code alone can't reveal. **An agent must never delete
 a constructor call without explicit human confirmation**, and must state that the
 deletion may need to propagate via `keys.ts`.
+
+This project **accumulates**: every previously delivered ticket has its own
+`src/fluent/<t-…>/` directory, and imported `metadata/*.xml` describes records
+that are already live. A build compiles all of it together. So: only ever **add**
+files under your own ticket's directory; never edit or remove another ticket's
+file or an imported record; a `Now.ID` key that collides with an existing record
+fails the build (that is correct — pick a different key).
 
 ## Referencing other records — `Now.ref`
 

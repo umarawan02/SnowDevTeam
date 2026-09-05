@@ -66,9 +66,10 @@ export async function gitAddCommit(dir: string, message: string): Promise<void> 
   ]);
 }
 
-/** `git init` + one commit of everything currently in `dir`. */
+/** `git init` (on `main`, regardless of the machine's init.defaultBranch) +
+ *  one commit of everything currently in `dir`. */
 export async function gitInitialCommit(dir: string, message: string): Promise<void> {
-  await git(dir, ["init", "-q"]);
+  await git(dir, ["init", "-q", "-b", "main"]);
   await gitAddCommit(dir, message);
 }
 

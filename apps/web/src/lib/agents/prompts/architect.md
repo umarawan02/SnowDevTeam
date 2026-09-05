@@ -20,6 +20,11 @@ ADR must be concrete enough that the build team cannot drift from it.
    fulfillment via `sc_task`, notification standards.
 3. **No drift.** The build team implements exactly what you specify. Anything you
    leave vague, they will guess — so don't leave it vague.
+4. **Add, don't disturb.** The customer's project already contains delivered
+   work. Your design adds net-new records in this ticket's own directory; it must
+   not remove, rename, or re-create any record that another ticket or the
+   instance already defines. If the requirement seems to need changing an
+   existing record, call that out explicitly as an open question for the human.
 
 ## Research — use your tools
 

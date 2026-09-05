@@ -4,8 +4,16 @@ import { config } from "@/lib/config";
 import { PIPELINE, ROLE_CONFIG, type PipelineContext } from "@/lib/agents/roles";
 import { runAgent } from "@/lib/agents/runAgent";
 import { resolveAgent } from "@/lib/agents/persona-prompt";
-import { parseQaVerdict, parseReworkFrom, parseGeneratedFiles, type ReworkFrom } from "@/lib/pipeline/parse";
-import { buildWorkspace } from "@/lib/nowsdk/workspace";
+import {
+  parseQaVerdict,
+  parseReworkFrom,
+  parseGeneratedFiles,
+  ticketDirName,
+  ticketBranchName,
+  type ReworkFrom,
+} from "@/lib/pipeline/parse";
+import { buildProject, relocateIntoTicketDir, withProjectLock } from "@/lib/nowsdk/workspace";
+import { commitAll, discardTree, resetTicketBranch } from "@/lib/git/repo";
 import { toProjectContext } from "@/lib/projects/resolve";
 
 export interface PipelineResult {
@@ -60,42 +68,67 @@ async function resetFrom(ticketId: string, fromOrder: number): Promise<void> {
 }
 
 /**
- * Compile-check the Developer's code before it reaches QA. Runs `now-sdk build`;
- * on failure it re-runs the Developer with the diagnostics as a fix-only
- * directive, up to MAX_BUILD_FIX rounds. Returns ok only when the build is clean.
+ * Compile-check the Developer's code before it reaches QA (REFACTOR_BRIEF
+ * Phase 2 — the build now runs over the *whole* project on the ticket's own
+ * git branch). The ticket's files land in `src/fluent/<ticketDir>/`; a clean
+ * build commits the branch, a failed build discards the tree and re-runs the
+ * Developer with the diagnostics, up to MAX_BUILD_FIX rounds.
  */
 async function runBuildGate(ticketId: string, ctx: PipelineContext): Promise<{ ok: boolean; log: string }> {
+  const repo = ctx.project.repoPath;
+  const branch = ticketBranchName(ctx.ticketDir);
+  const base = ctx.project.defaultBranch;
+
   for (let attempt = 0; attempt <= MAX_BUILD_FIX; attempt++) {
-    const { files, warnings } = parseGeneratedFiles(ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "");
-    if (files.length === 0) {
-      const log = `# Build\n\n✗ No parseable files in the Developer output.\n\n${warnings.join("\n")}`;
-      await upsertArtifact(ticketId, ARTIFACT_TYPE.BUILD_LOG, log);
-      return { ok: false, log };
+    const parsed = parseGeneratedFiles(ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "");
+    const { files, rejected } = relocateIntoTicketDir(parsed.files, ctx.ticketDir);
+
+    let ok = false;
+    let diagnostics: string;
+    let log: string;
+
+    if (files.length === 0 || rejected.length > 0) {
+      diagnostics = rejected.length
+        ? `These paths are outside your ticket directory — emit plain names only ` +
+          `(the orchestrator files them under src/fluent/${ctx.ticketDir}/):\n${rejected.join("\n")}`
+        : `No parseable \`=== FILE: … ===\` blocks in your output.\n${parsed.warnings.join("\n")}`;
+      log = `# Build\n\n✗ ${diagnostics}`;
+    } else {
+      const build = await withProjectLock(repo, async () => {
+        await resetTicketBranch(repo, branch, base);
+        const r = await buildProject(repo, ctx.ticketDir, files);
+        if (r.code === 0) {
+          await commitAll(repo, `ticket ${ticketId.slice(-6)}: ${ctx.title}`.slice(0, 100));
+        } else {
+          await discardTree(repo, base);
+        }
+        return r;
+      });
+      ok = build.code === 0;
+      diagnostics = build.diagnostics;
+      const output = [build.stdout, build.stderr].filter(Boolean).join("\n").trim() || "(no output)";
+      log = ok
+        ? `# Build\n\n✓ \`now-sdk build\` passed (exit 0) — ${build.fileCount} file(s) under ` +
+          `src/fluent/${ctx.ticketDir}/\n\n\`\`\`text\n${output}\n\`\`\`\n`
+        : `# Build\n\n✗ \`now-sdk build\` failed (exit ${build.code}) — fix attempt ${attempt + 1} of ` +
+          `${MAX_BUILD_FIX + 1}\n\n\`\`\`text\n${output}\n\`\`\`\n`;
     }
 
-    const build = await buildWorkspace(ctx.project.repoPath, files);
-    const header =
-      build.code === 0
-        ? `# Build\n\n✓ \`now-sdk build\` passed (exit 0) — ${build.fileCount} file(s)`
-        : `# Build\n\n✗ \`now-sdk build\` failed (exit ${build.code}) — fix attempt ${attempt + 1} of ${MAX_BUILD_FIX + 1}`;
-    const body = [build.stdout, build.stderr].filter(Boolean).join("\n");
-    await upsertArtifact(
-      ticketId,
-      ARTIFACT_TYPE.BUILD_LOG,
-      `${header}\n\n\`\`\`text\n${body.trim() || "(no output)"}\n\`\`\`\n`,
-    );
+    await upsertArtifact(ticketId, ARTIFACT_TYPE.BUILD_LOG, log);
 
-    if (build.code === 0) return { ok: true, log: body };
-    if (attempt === MAX_BUILD_FIX) return { ok: false, log: body };
+    if (ok) {
+      await prisma.ticket.update({ where: { id: ticketId }, data: { gitBranch: branch } });
+      return { ok: true, log };
+    }
+    if (attempt === MAX_BUILD_FIX) return { ok: false, log };
 
-    // Re-run the Developer against the compiler errors + its own failing code —
+    // Re-run the Developer against the diagnostics + its own failing code —
     // no design / task-list re-send (buildFixPrompt in roles.ts).
-    const failingCode = ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "";
+    ctx.buildErrors = diagnostics;
+    ctx.failingCode = ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "";
     await prisma.agentStep.deleteMany({ where: { ticketId, role: "DEVELOPER" } });
     await prisma.artifact.deleteMany({ where: { ticketId, type: ARTIFACT_TYPE.CODE } });
     delete ctx.artifacts[ARTIFACT_TYPE.CODE];
-    ctx.buildErrors = build.diagnostics;
-    ctx.failingCode = failingCode;
     const res = await runStages(ticketId, ctx, DEV_ORDER, DEV_ORDER, new Set(), [], { gateBuild: false });
     ctx.buildErrors = undefined;
     ctx.failingCode = undefined;
@@ -169,7 +202,11 @@ async function runStages(
         withTools: stage.withTools,
         webTools: stage.webTools,
         buildTool: stage.buildTool,
-        projectDir: ctx.project.repoPath,
+        nowsdk: {
+          projectDir: ctx.project.repoPath,
+          ticketDir: ctx.ticketDir,
+          defaultBranch: ctx.project.defaultBranch,
+        },
         model: agent.model,
       });
 
@@ -283,11 +320,13 @@ export async function runPipeline(
 
   const project = projectContextOf(ticket);
   const ctx: PipelineContext = {
+    ticketId,
     title: ticket.title,
     description: ticket.description,
     artifacts: {},
     targetScope: project.kind,
     project,
+    ticketDir: ticketDirName(ticketId, ticket.title),
   };
   const skipCompleted = canResume
     ? new Set(ticket.steps.filter((s) => s.status === STEP_STATUS.COMPLETE).map((s) => s.order))
@@ -358,11 +397,13 @@ export async function runRework(
 
   const project = projectContextOf(ticket);
   const ctx: PipelineContext = {
+    ticketId,
     title: ticket.title,
     description: ticket.description,
     artifacts: {},
     targetScope: project.kind,
     project,
+    ticketDir: ticketDirName(ticketId, ticket.title),
     reworkNote: directive,
     reworkRound: round,
   };

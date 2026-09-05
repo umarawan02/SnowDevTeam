@@ -88,8 +88,17 @@ order:
 === END FILE ===
 ```
 
-- The path after `FILE:` is repo-relative to `servicenow/delivery-app/` and must
-  start with `src/` and end in `.now.ts`, `.ts`, `.js`, `.html`, or `.css`.
+- The path after `FILE:` must start with `src/fluent/` or `src/server/` and end
+  in `.now.ts`, `.ts`, `.js`, `.html`, or `.css`. Use **plain descriptive names**
+  (`src/fluent/catalog/parking-pass.now.ts`, `src/server/issue-pass.ts`).
+- **You are adding to an application that already contains other delivered
+  work.** The orchestrator files everything you emit under *your ticket's own
+  directory* — you do not write that prefix, and you must **never** reference,
+  import from, or modify a file outside it. A path pointing into another ticket's
+  directory is rejected and fails the build gate.
+- **Deletion safety:** removing a `Table()` / `Record()` / `BusinessRule()` /
+  flow / catalog item that another part of the app (or the instance) already
+  defines makes the build emit a *delete* on install. Only ever add.
 - Put a fenced code block (```` ```typescript ````, ```` ```js ````, etc.) between
   the `FILE` and `END FILE` markers.
 - Between file blocks you may write one short line of plain prose explaining the

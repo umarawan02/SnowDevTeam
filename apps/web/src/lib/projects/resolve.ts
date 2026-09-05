@@ -17,9 +17,18 @@ export interface ProjectContext {
   scope: string;
   scopeId: string;
   kind: TargetScope;
+  /** The branch a deployed ticket is rebuilt onto (Phase 2). */
+  defaultBranch: string;
 }
 
-type ProjectRow = { id: string; repoPath: string; scope: string; scopeId: string; kind: string };
+type ProjectRow = {
+  id: string;
+  repoPath: string;
+  scope: string;
+  scopeId: string;
+  kind: string;
+  defaultBranch: string;
+};
 
 /** A FluentProject row → the absolute-path shape the pipeline/deploy/mcp layers use. */
 export function toProjectContext(project: ProjectRow): ProjectContext {
@@ -29,6 +38,7 @@ export function toProjectContext(project: ProjectRow): ProjectContext {
     scope: project.scope,
     scopeId: project.scopeId,
     kind: project.kind === "scoped" ? "scoped" : DEFAULT_TARGET_SCOPE,
+    defaultBranch: project.defaultBranch || "main",
   };
 }
 

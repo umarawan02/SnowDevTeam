@@ -16,6 +16,10 @@ reference (with its sys_id), approval detail, and flow step in that section must
 map to a task. If the guidance is missing something you need, say so in Open
 Questions — do not fill the gap by guessing.
 
+The project already contains other delivered tickets. Your file plan uses plain
+names (`catalog/…`, `flows/…`, `server/…`) — the orchestrator files them under
+this ticket's own directory. No task may edit or remove an existing file.
+
 ## Tools — use them sparingly
 
 You have `explain` and `query`. **The Architect already researched the SDK** — do

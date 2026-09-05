@@ -22,20 +22,9 @@ artifact, and clicking **Approve** builds + deploys a real catalog item and flow
 to the PDI (verified by a post-deploy query). See `BUILD_PROMTP.md` for the phase
 plan and `docs/phase4-validation.md` for the end-to-end validation write-up.
 
-### Target scope
-
-Each request carries a **target scope**, chosen in the intake chat and defaulting
-to **global**:
-
-| Scope | Where it builds | now.config.json |
-|---|---|---|
-| **global** (default) | plain platform-wide records (`sys_scope = Global`), owned by the tracking app **AI Delivery Global** (`a53b8a58…`). Agents use no scope prefix and may reference OOB records directly. | `{ scope: "global", scopeId: "a53b8a58…", packageResolverVersion: "2.0.0" }` |
-| **scoped** | the **AI Delivery App** (`x_1460392_delivery`) — prefixed tables, OOB-table logic must live in a flow. | the committed `servicenow/delivery-app/now.config.json` |
-
-The pipeline swaps `now.config.json` per ticket at build/deploy time and
-snapshot-restores it, so the committed file always stays on the scoped app.
-One shared now-sdk workspace still means `keys.ts` churns when consecutive
-tickets target different scopes — an accepted MVP limitation.
+> **Being refactored** (`REFACTOR_BRIEF.md`) from the single-PDI MVP to a
+> multi-customer, scope-aware platform. See **Customers, Instances, Projects**
+> below for the current model.
 
 ### The app (`apps/web`)
 
@@ -130,3 +119,17 @@ creation. `pnpm --filter web seed-demo-customer` registers the existing PDI
 (`AI Delivery App` scoped, `AI Delivery Global` global) as projects, so the pipeline
 has real projects to build against out of the box. `servicenow/delivery-app/` is the
 legacy single-workspace project this replaces; it's left on disk unmanaged.
+
+### The project accumulates (git per ticket)
+
+Each ticket's generated code lands in **its own subdirectory** —
+`src/fluent/t-<id>-<slug>/` and `src/server/t-<id>-<slug>/` — and stays; the whole
+project compiles as one, so a ticket that conflicts with delivered work fails its
+build gate. The pipeline runs each ticket on a `ticket/…` branch in the project
+repo; a passing build gate commits the branch. **Approve** rebuilds just that
+ticket's sources onto the default branch (no `git merge` → no `keys.ts` conflict),
+runs `now-sdk build --frozenKeys` as a CI check, installs, then commits. `keys.ts`
+is a committed, branch-tracked file — never snapshot/restored.
+
+Same-project tickets serialize only on the three tree-touching steps (build gate,
+the Developer's `build` tool, deploy); their agent stages run in parallel.

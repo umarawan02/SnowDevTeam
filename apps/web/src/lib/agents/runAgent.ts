@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "@/lib/config";
-import { createNowsdkMcpServer, NOWSDK_TOOL_NAMES, NOWSDK_BUILD_TOOL } from "@/lib/nowsdk/mcp";
+import { createNowsdkMcpServer, type NowsdkServerOpts, NOWSDK_TOOL_NAMES, NOWSDK_BUILD_TOOL } from "@/lib/nowsdk/mcp";
 
 export interface RunAgentInput {
   systemPrompt: string;
@@ -11,10 +11,10 @@ export interface RunAgentInput {
   webTools?: boolean;
   /** Also allow the `build` tool (Developer — compile draft code). Implies withTools. */
   buildTool?: boolean;
-  /** The ticket's resolved FluentProject directory. Required whenever any of
+  /** The ticket's project + ticket dir. Required whenever any of
    *  withTools/webTools/buildTool is set — every nowsdk MCP tool (explain,
    *  query, build) runs `now-sdk` against a specific project. */
-  projectDir?: string;
+  nowsdk?: NowsdkServerOpts;
   model?: string;
 }
 
@@ -44,11 +44,11 @@ export interface RunAgentResult {
  * step FAILED.
  */
 export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
-  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool, projectDir } = input;
+  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool, nowsdk } = input;
   const model = input.model ?? config.ANTHROPIC_MODEL;
   const needsNowsdk = withTools || webTools || buildTool;
-  if (needsNowsdk && !projectDir) {
-    throw new Error("runAgent: projectDir is required when withTools/webTools/buildTool is set");
+  if (needsNowsdk && !nowsdk) {
+    throw new Error("runAgent: `nowsdk` opts are required when withTools/webTools/buildTool is set");
   }
 
   const toolCalls: ToolCall[] = [];
@@ -71,7 +71,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       allowDangerouslySkipPermissions: true,
       ...(needsNowsdk
         ? {
-            mcpServers: { nowsdk: createNowsdkMcpServer(projectDir!) },
+            mcpServers: { nowsdk: createNowsdkMcpServer(nowsdk!) },
             allowedTools: [
               ...NOWSDK_TOOL_NAMES,
               ...(buildTool ? [NOWSDK_BUILD_TOOL] : []),

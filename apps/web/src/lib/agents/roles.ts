@@ -12,12 +12,24 @@ import { SYSTEM_PROMPTS } from "@/lib/agents/prompts";
 const MODEL_FAST = "claude-haiku-4-5-20251001";
 
 export interface PipelineContext {
+  ticketId: string;
   title: string;
   description: string;
   /** Prior-stage artifacts, keyed by ArtifactType, in the order they were produced. */
   artifacts: Partial<Record<ArtifactType, string>>;
   /** The ticket's resolved FluentProject (REFACTOR_BRIEF Phase 1). */
-  project: { id: string; repoPath: string; scope: string; scopeId: string; kind: TargetScope };
+  project: {
+    id: string;
+    repoPath: string;
+    scope: string;
+    scopeId: string;
+    kind: TargetScope;
+    defaultBranch: string;
+  };
+  /** This ticket's subdirectory inside the project — `t-<short-id>-<slug>`
+   *  (REFACTOR_BRIEF Phase 2). All its generated code lives under
+   *  `src/fluent/<ticketDir>/` and `src/server/<ticketDir>/`. */
+  ticketDir: string;
   /** Mirrors `project.kind` — kept as its own field so `scopeSection` (below)
    *  and every existing buildUserPrompt stay unchanged. Set once, alongside
    *  `project`, by whoever builds the context (run.ts). */

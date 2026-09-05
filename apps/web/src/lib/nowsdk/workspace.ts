@@ -4,13 +4,16 @@ import { runNowSdk } from "@/lib/nowsdk/cli";
 import type { GeneratedFile } from "@/lib/pipeline/parse";
 
 /**
- * Per-project Fluent workspace operations (REFACTOR_BRIEF Phase 1). Every
- * function here takes a `projectDir` — a FluentProject's `repoPath`, resolved
- * against WORKSPACES_ROOT by the caller — instead of a single hard-coded
- * workspace. `now.config.json` is never rewritten at runtime: each project's
- * own committed file is authoritative, and picking *which* project a ticket
- * builds against is the caller's job (`resolveProjectForTicket` today,
- * `tier.ts` from Phase 3 on).
+ * Per-project Fluent workspace operations (REFACTOR_BRIEF Phase 1 + 2). Each
+ * customer FluentProject is its own directory under WORKSPACES_ROOT. Phase 2:
+ * the project *accumulates* — every ticket's generated code lives in its own
+ * subdirectory (`src/fluent/<ticketDir>/…`, `src/server/<ticketDir>/…`) and
+ * stays; the whole project compiles as one. `now.config.json` is never
+ * rewritten at runtime.
+ *
+ * Nothing here takes a lock: `buildProject` assumes the caller already holds
+ * `withProjectLock(projectDir, …)` (the build gate, the Developer's `build`
+ * tool, and deploy each hold it for the duration of one atomic tree op).
  */
 
 function fluentDir(projectDir: string): string {
@@ -23,9 +26,8 @@ function keysFile(projectDir: string): string {
   return path.join(fluentDir(projectDir), "generated", "keys.ts");
 }
 
-// Per-project serialisation: concurrent tickets on different projects must
-// not wait on each other, but two tickets on the *same* project still need
-// to run their builds one at a time (they share one `src/fluent` + keys.ts).
+// Per-project serialisation. Only acquired by the three tree-touching call
+// sites (build gate / Developer `build` tool / deploy), never nested.
 const chains = new Map<string, Promise<unknown>>();
 
 /** Run `fn` after every earlier operation on this same project has finished. */
@@ -39,26 +41,22 @@ export function withProjectLock<T>(projectDir: string, fn: () => Promise<T>): Pr
   return run;
 }
 
-/** Remove previously-written generated sources, keeping SDK-managed files. */
-export function cleanWorkspace(projectDir: string): string[] {
-  const removed: string[] = [];
-  const fDir = fluentDir(projectDir);
-  const sDir = serverDir(projectDir);
-  if (fs.existsSync(fDir)) {
-    for (const entry of fs.readdirSync(fDir)) {
-      if (entry === "generated") continue; // keys.ts is SDK-managed
-      fs.rmSync(path.join(fDir, entry), { recursive: true, force: true });
-      removed.push(`src/fluent/${entry}`);
-    }
+/** Read the SDK-managed keys.ts, or null if it doesn't exist yet. */
+export function readKeys(projectDir: string): string | null {
+  try {
+    const f = keysFile(projectDir);
+    return fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null;
+  } catch {
+    return null;
   }
-  if (fs.existsSync(sDir)) {
-    for (const entry of fs.readdirSync(sDir)) {
-      if (entry === "tsconfig.json") continue;
-      fs.rmSync(path.join(sDir, entry), { recursive: true, force: true });
-      removed.push(`src/server/${entry}`);
-    }
+}
+
+/** Remove one ticket's generated sources — NOT the rest of the project. */
+export function cleanTicketDir(projectDir: string, ticketDir: string): void {
+  for (const base of [fluentDir(projectDir), serverDir(projectDir)]) {
+    const d = path.join(base, ticketDir);
+    fs.rmSync(d, { recursive: true, force: true });
   }
-  return removed;
 }
 
 export function writeGeneratedFiles(projectDir: string, files: GeneratedFile[]): void {
@@ -73,28 +71,39 @@ export function writeGeneratedFiles(projectDir: string, files: GeneratedFile[]):
   }
 }
 
+const TICKET_DIR_RE = /^t-[a-z0-9]{6}-/;
+
 /**
- * `keys.ts` is a tracked file that `now-sdk build` rewrites from the current
- * `src/fluent` contents. Snapshot it so a build that never installs can't dirty
- * it; only a confirmed deploy should keep the regenerated version.
+ * File everything the Developer emitted under `src/fluent/<ticketDir>/` and
+ * `src/server/<ticketDir>/`, preserving the sub-path. A path already inside
+ * *this* ticket's dir is left alone; a path inside a *different* ticket's dir
+ * (looks like `t-xxxxxx-…`) is rejected — editing another ticket's file is a
+ * build-gate failure the reviewer must see (REFACTOR_BRIEF 2.1).
  */
-export function snapshotKeys(projectDir: string): string | null {
-  try {
-    const f = keysFile(projectDir);
-    return fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null;
-  } catch {
-    return null;
-  }
-}
-export function restoreKeys(projectDir: string, snap: string | null): void {
-  try {
-    const f = keysFile(projectDir);
-    if (snap != null && fs.existsSync(path.dirname(f))) {
-      fs.writeFileSync(f, snap, "utf8");
+export function relocateIntoTicketDir(
+  files: GeneratedFile[],
+  ticketDir: string,
+): { files: GeneratedFile[]; rejected: string[] } {
+  const out: GeneratedFile[] = [];
+  const rejected: string[] = [];
+  for (const f of files) {
+    const p = f.path.replace(/\\/g, "/");
+    const m = p.match(/^src\/(fluent|server)\/(.+)$/);
+    if (!m) {
+      rejected.push(`${p} (not under src/fluent/ or src/server/)`);
+      continue;
     }
-  } catch {
-    /* best effort */
+    const [, area, rest] = m;
+    const firstSeg = rest.split("/")[0];
+    if (firstSeg === ticketDir) {
+      out.push(f); // already correctly placed
+    } else if (TICKET_DIR_RE.test(firstSeg)) {
+      rejected.push(`${p} (belongs to another ticket's directory)`);
+    } else {
+      out.push({ path: `src/${area}/${ticketDir}/${rest}`, content: f.content });
+    }
   }
+  return { files: out, rejected };
 }
 
 export interface BuildResult {
@@ -103,7 +112,6 @@ export interface BuildResult {
   stderr: string;
   /** Just the error / diagnostic lines, for feeding back to the agent. */
   diagnostics: string;
-  removed: string[];
   fileCount: number;
 }
 
@@ -115,33 +123,23 @@ function extractDiagnostics(out: string): string {
 }
 
 /**
- * Write `files` into `projectDir` and run `now-sdk build` — serialised per
- * project, and `keys.ts` is always restored afterwards. For the build gate
- * and the Developer's `build` tool; `deployTicket` orchestrates its own
- * build + install + keys.
+ * Write `files` into `projectDir/src/{fluent,server}/<ticketDir>/` (replacing
+ * only that dir) and run `now-sdk build` over the WHOLE project. The caller
+ * holds `withProjectLock` and is responsible for the git state (branch,
+ * commit-or-discard) around this call.
  */
-export function buildWorkspace(projectDir: string, files: GeneratedFile[]): Promise<BuildResult> {
-  return withProjectLock(projectDir, async () => {
-    const keys = snapshotKeys(projectDir);
-    try {
-      const removed = cleanWorkspace(projectDir);
-      writeGeneratedFiles(projectDir, files);
-      const { stdout, stderr, code } = await runNowSdk(["build"], {
-        cwd: projectDir,
-        timeoutMs: 180_000,
-        maxChars: 20_000,
-      });
-      const combined = [stdout, stderr].filter(Boolean).join("\n");
-      return {
-        code,
-        stdout,
-        stderr,
-        diagnostics: extractDiagnostics(combined),
-        removed,
-        fileCount: files.length,
-      };
-    } finally {
-      restoreKeys(projectDir, keys);
-    }
+export async function buildProject(
+  projectDir: string,
+  ticketDir: string,
+  files: GeneratedFile[],
+): Promise<BuildResult> {
+  cleanTicketDir(projectDir, ticketDir);
+  writeGeneratedFiles(projectDir, files);
+  const { stdout, stderr, code } = await runNowSdk(["build"], {
+    cwd: projectDir,
+    timeoutMs: 180_000,
+    maxChars: 20_000,
   });
+  const combined = [stdout, stderr].filter(Boolean).join("\n");
+  return { code, stdout, stderr, diagnostics: extractDiagnostics(combined), fileCount: files.length };
 }

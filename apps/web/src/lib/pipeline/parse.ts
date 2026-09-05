@@ -1,12 +1,32 @@
 /**
  * Best-effort parsers for the Developer's file-block output and the QA verdict.
  * These NEVER throw — a malformed artifact is a QA finding, not a pipeline crash.
- * Phase 3 consumes `parseGeneratedFiles` to write code into the now-sdk workspace.
  */
 
 export interface GeneratedFile {
   path: string;
   content: string;
+}
+
+/**
+ * A ticket's own subdirectory inside its FluentProject (REFACTOR_BRIEF
+ * Phase 2): `t-<last 6 of the cuid>-<title slug>`. Stable for the ticket's
+ * lifetime; used for `src/fluent/<dir>/`, `src/server/<dir>/`, and the
+ * `ticket/<dir>` git branch.
+ */
+export function ticketDirName(ticketId: string, title: string): string {
+  const slug =
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40)
+      .replace(/-+$/, "") || "ticket";
+  return `t-${ticketId.slice(-6)}-${slug}`;
+}
+
+export function ticketBranchName(ticketDir: string): string {
+  return `ticket/${ticketDir}`;
 }
 
 const FILE_BLOCK_RE =

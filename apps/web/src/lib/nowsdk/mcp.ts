@@ -1,8 +1,17 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { runNowSdk } from "@/lib/nowsdk/cli";
-import { buildWorkspace } from "@/lib/nowsdk/workspace";
-import { parseGeneratedFiles } from "@/lib/pipeline/parse";
+import { buildProject, relocateIntoTicketDir, withProjectLock } from "@/lib/nowsdk/workspace";
+import { discardTree, resetTicketBranch } from "@/lib/git/repo";
+import { parseGeneratedFiles, ticketBranchName } from "@/lib/pipeline/parse";
+
+export interface NowsdkServerOpts {
+  projectDir: string;
+  /** The ticket's subdir + branch — the `build` tool compiles the whole
+   *  project with the ticket's files written here, then discards. */
+  ticketDir: string;
+  defaultBranch: string;
+}
 
 /**
  * In-process MCP server exposing the now-sdk capabilities the Architect /
@@ -89,7 +98,7 @@ const makeQueryTool = (projectDir: string) =>
     { annotations: { readOnlyHint: true }, alwaysLoad: true },
   );
 
-const makeBuildTool = (projectDir: string) =>
+const makeBuildTool = (opts: NowsdkServerOpts) =>
   tool(
     "build",
     "Compile the ServiceNow Fluent files you have written. Pass EVERY file you " +
@@ -108,17 +117,42 @@ const makeBuildTool = (projectDir: string) =>
       const blocks = files
         .map((f) => `=== FILE: ${f.path} ===\n\`\`\`typescript\n${f.content}\n\`\`\`\n=== END FILE ===`)
         .join("\n\n");
-      const { files: valid, warnings } = parseGeneratedFiles(blocks);
-      if (valid.length === 0) {
+      const { files: parsed, warnings } = parseGeneratedFiles(blocks);
+      if (parsed.length === 0) {
         return {
           content: [{ type: "text", text: `No valid files to build.\n${warnings.join("\n")}` }],
           isError: true,
         };
       }
-      const r = await buildWorkspace(projectDir, valid);
+      const { files: valid, rejected } = relocateIntoTicketDir(parsed, opts.ticketDir);
+      if (rejected.length > 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `✗ Rejected file path(s):\n${rejected.join("\n")}\n\n` +
+                `You are adding to an existing app. Emit plain names ` +
+                `(e.g. \`src/fluent/catalog/thing.now.ts\`) — the orchestrator files ` +
+                `them under your ticket's own directory. Never touch another ticket's files.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+      // Compile the WHOLE project with this ticket's files written in, then
+      // throw the working-tree changes away — the tool only reports.
+      const r = await withProjectLock(opts.projectDir, async () => {
+        await resetTicketBranch(opts.projectDir, ticketBranchName(opts.ticketDir), opts.defaultBranch);
+        try {
+          return await buildProject(opts.projectDir, opts.ticketDir, valid);
+        } finally {
+          await discardTree(opts.projectDir, opts.defaultBranch);
+        }
+      });
       const head =
         r.code === 0
-          ? `✓ now-sdk build passed (exit 0) · ${r.fileCount} file(s)`
+          ? `✓ now-sdk build passed (exit 0) · ${r.fileCount} file(s) written under src/fluent/${opts.ticketDir}/`
           : `✗ now-sdk build FAILED (exit ${r.code}) — fix these and call build again`;
       const body = [r.stdout, r.stderr].filter(Boolean).join("\n").slice(0, 12_000);
       return {
@@ -130,14 +164,14 @@ const makeBuildTool = (projectDir: string) =>
   );
 
 /**
- * Fresh in-process `nowsdk` MCP server for one agent run, pinned to
- * `projectDir` — the ticket's resolved FluentProject directory.
+ * Fresh in-process `nowsdk` MCP server for one agent run, pinned to the
+ * ticket's FluentProject directory + ticket subdir.
  */
-export function createNowsdkMcpServer(projectDir: string) {
+export function createNowsdkMcpServer(opts: NowsdkServerOpts) {
   return createSdkMcpServer({
     name: "nowsdk",
     version: "1.0.0",
-    tools: [makeExplainTool(projectDir), makeQueryTool(projectDir), makeBuildTool(projectDir)],
+    tools: [makeExplainTool(opts.projectDir), makeQueryTool(opts.projectDir), makeBuildTool(opts)],
   });
 }
 

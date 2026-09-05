@@ -2,10 +2,11 @@ import { prisma } from "@/lib/db";
 import { ARTIFACT_TYPE, TICKET_STATUS } from "@/lib/constants";
 import { config } from "@/lib/config";
 import { runNowSdk } from "@/lib/nowsdk/cli";
-import { cleanWorkspace, writeGeneratedFiles, snapshotKeys, restoreKeys, withProjectLock } from "@/lib/nowsdk/workspace";
+import { readKeys, withProjectLock } from "@/lib/nowsdk/workspace";
 import { keysAdded, parseKeys } from "@/lib/nowsdk/keys";
+import { commitAll, discardTree, stageTicketOntoDefault } from "@/lib/git/repo";
 import { toProjectContext } from "@/lib/projects/resolve";
-import { parseGeneratedFiles } from "@/lib/pipeline/parse";
+import { ticketBranchName, ticketDirName } from "@/lib/pipeline/parse";
 import { verifyDeployment } from "@/lib/servicenow/verify";
 
 export interface DeployResult {
@@ -45,10 +46,10 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
     return { ok: false, ticketId, status: ticket.status, error: "ticket has no FluentProject assigned" };
   }
   const project = toProjectContext(ticket.project);
-
-  // Latest CODE artifact — a rework loop may have produced more than one.
-  const codeArtifact = [...ticket.artifacts].reverse().find((a) => a.type === ARTIFACT_TYPE.CODE);
-  const { files, warnings } = parseGeneratedFiles(codeArtifact?.content ?? "");
+  const ticketDir = ticket.gitBranch?.replace(/^ticket\//, "") || ticketDirName(ticketId, ticket.title);
+  const branch = ticketBranchName(ticketDir);
+  const base = project.defaultBranch;
+  const ticketPaths = [`src/fluent/${ticketDir}`, `src/server/${ticketDir}`];
 
   await prisma.ticket.update({
     where: { id: ticketId },
@@ -57,7 +58,7 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
 
   let log =
     `# Deploy — ${ticket.title}\n\nStarted: ${new Date().toISOString()}\n` +
-    `Project: \`${project.id}\` (${project.kind})\nWorkspace: \`${project.repoPath}\`\n`;
+    `Project: \`${project.id}\` (${project.kind})\nBranch: \`${branch}\` → \`${base}\`\n`;
 
   const finishFailed = async (extra: string) => {
     log += extra;
@@ -67,43 +68,54 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
   };
 
   return withProjectLock(project.repoPath, async () => {
-    const keysSnapshot = snapshotKeys(project.repoPath);
-    let deployed = false;
     try {
-      if (files.length === 0) {
+      // 1. Bring just this ticket's source dirs from its branch onto a clean
+      //    checkout of the default branch (no git merge → no keys.ts conflict).
+      const { staged, missing } = await stageTicketOntoDefault(project.repoPath, base, branch, ticketPaths);
+      if (staged.length === 0) {
+        await discardTree(project.repoPath, base);
         return await finishFailed(
-          section("Parse", `No deployable files in the Developer output.\n${warnings.join("\n")}`),
+          section("Merge", `No source found for this ticket on \`${branch}\` — the build gate must run first.`),
+        );
+      }
+      log += section(
+        "Merge",
+        `Onto \`${base}\`: ${staged.join(", ")}${missing.length ? `  (no ${missing.join(", ")})` : ""}`,
+      );
+
+      const keysBefore = readKeys(project.repoPath);
+
+      // 2. Build the whole project — regenerates keys.ts for default + this ticket.
+      const build = await runNowSdk(["build"], { cwd: project.repoPath, timeoutMs: 180_000, maxChars: 24_000 });
+      log += section(`now-sdk build  (exit ${build.code})`, [build.stdout, build.stderr].filter(Boolean).join("\n"));
+      if (build.code !== 0) {
+        await discardTree(project.repoPath, base);
+        return await finishFailed(
+          "\n**Build failed on the default branch (conflicts with already-delivered work). Send back for rework.**\n",
         );
       }
 
-      const removed = cleanWorkspace(project.repoPath);
-      writeGeneratedFiles(project.repoPath, files);
-      log += section(
-        "Files",
-        `Removed: ${removed.join(", ") || "(none)"}\n\nWrote ${files.length} file(s):\n` +
-          files.map((f) => `  ${f.path}`).join("\n") +
-          (warnings.length ? `\n\nParser warnings:\n${warnings.join("\n")}` : ""),
-      );
-
-      // 1. build (the pipeline gate already verified this, but the workspace may
-      //    hold stale files and demo data differs — build again).
-      const build = await runNowSdk(["build"], { cwd: project.repoPath, timeoutMs: 180_000, maxChars: 24_000 });
-      log += section(
-        `now-sdk build  (exit ${build.code})`,
-        [build.stdout, build.stderr].filter(Boolean).join("\n"),
-      );
-      if (build.code !== 0) {
-        return await finishFailed("\n**Build failed — install was not attempted.**\n");
+      // 3. --frozenKeys CI check: keys.ts must be internally consistent now.
+      const frozen = await runNowSdk(["build", "--frozenKeys"], {
+        cwd: project.repoPath,
+        timeoutMs: 180_000,
+        maxChars: 12_000,
+      });
+      if (frozen.code !== 0) {
+        log += section(
+          "now-sdk build --frozenKeys  (FAILED)",
+          [frozen.stdout, frozen.stderr].filter(Boolean).join("\n"),
+        );
+        await discardTree(project.repoPath, base);
+        return await finishFailed("\n**Key / sys_id consistency check failed. Send back for rework.**\n");
       }
+      log += section("now-sdk build --frozenKeys", "✓ keys / sys_ids up to date");
 
-      // What this build added to keys.ts — verification queries these exact
-      // sys_ids. On a re-deploy the records may already be in the baseline, so
-      // also pass the full set as a fallback.
-      const keysAfter = snapshotKeys(project.repoPath);
-      const created = keysAdded(keysSnapshot, keysAfter);
+      const keysAfter = readKeys(project.repoPath);
+      const created = keysAdded(keysBefore, keysAfter);
       const allRecords = parseKeys(keysAfter);
 
-      // 2. install (deploy)
+      // 4. Install to the instance.
       const install = await runNowSdk(["install", "--auth", config.SN_AUTH_ALIAS], {
         cwd: project.repoPath,
         timeoutMs: 300_000,
@@ -114,12 +126,17 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
         [install.stdout, install.stderr].filter(Boolean).join("\n"),
       );
       if (install.code !== 0) {
-        return await finishFailed("\n**Install failed.**\n");
+        await discardTree(project.repoPath, base);
+        return await finishFailed("\n**Install failed — the default branch was left unchanged.**\n");
       }
+
+      // 5. Install landed — commit the merged state on the default branch.
+      const commit = await commitAll(project.repoPath, `Deploy ${ticketId.slice(-6)}: ${ticket.title}`.slice(0, 100));
+      log += section("git commit", (commit.stdout || commit.stderr || "(committed)").trim());
 
       await storeLog(ticketId, log + "\n**Build + install exited cleanly. Verifying…**\n");
 
-      // 3. verify against the live instance
+      // 6. Verify against the live instance.
       const verification = await verifyDeployment({
         scope: project.kind,
         scopeName: project.scope,
@@ -142,15 +159,12 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
       }
 
       await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.DEPLOYED } });
-      deployed = true;
       return { ok: true, ticketId, status: TICKET_STATUS.DEPLOYED };
     } catch (err) {
+      await discardTree(project.repoPath, base).catch(() => {});
       return await finishFailed(
         section("Error", err instanceof Error ? err.stack ?? err.message : String(err)),
       );
-    } finally {
-      // keys.ts is regenerated by `now-sdk build`; keep it only on a real deploy.
-      if (!deployed) restoreKeys(project.repoPath, keysSnapshot);
     }
   });
 }
