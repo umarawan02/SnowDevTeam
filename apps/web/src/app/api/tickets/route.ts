@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createTicket, listTickets } from "@/lib/tickets";
 import { runPipeline } from "@/lib/pipeline/run";
 import { requireUser, AuthError } from "@/lib/auth/current-user";
+import { getDefaultCustomerId, resolveProjectForTicket } from "@/lib/projects/resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,9 @@ export async function POST(req: Request) {
     ? `${description.trim()}\n\n## Intake details\n\n${extras.join("\n")}`
     : description;
 
+  const customerId = await getDefaultCustomerId();
+  const project = await resolveProjectForTicket({ customerId, kind: targetScope });
+
   const ticket = await createTicket({
     title,
     description: fullDescription,
@@ -70,6 +74,9 @@ export async function POST(req: Request) {
     category: category ?? null,
     targetScope,
     createdById: user.id,
+    customerId,
+    instanceId: project.instanceId,
+    projectId: project.id,
   });
 
   // Fire-and-forget: the pipeline runs in the background of this long-lived Node

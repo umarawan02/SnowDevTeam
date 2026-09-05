@@ -16,7 +16,11 @@ export interface PipelineContext {
   description: string;
   /** Prior-stage artifacts, keyed by ArtifactType, in the order they were produced. */
   artifacts: Partial<Record<ArtifactType, string>>;
-  /** Where this ticket is built/deployed — "global" (default) or "scoped". */
+  /** The ticket's resolved FluentProject (REFACTOR_BRIEF Phase 1). */
+  project: { id: string; repoPath: string; scope: string; scopeId: string; kind: TargetScope };
+  /** Mirrors `project.kind` — kept as its own field so `scopeSection` (below)
+   *  and every existing buildUserPrompt stay unchanged. Set once, alongside
+   *  `project`, by whoever builds the context (run.ts). */
   targetScope: TargetScope;
   /**
    * Set when the pipeline is looping back for rework — the QA report and/or a

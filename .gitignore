@@ -31,6 +31,10 @@ servicenow/**/dist/
 servicenow/**/target/
 servicenow/**/.now/
 
+# Customer Fluent projects (REFACTOR_BRIEF Phase 1) — each is its own git
+# repo with its own node_modules; never committed here.
+/workspaces/
+
 # now-sdk: per-deploy generated app source (written from the DB artifact on Approve).
 # keys.ts stays tracked as the record-identity source of truth.
 servicenow/delivery-app/src/fluent/**

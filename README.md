@@ -115,5 +115,18 @@ pnpm exec now-sdk install          # (alias: deploy) — Phase 3, gated by Appro
 ## Environment split
 
 - **`.env`** (repo root) — `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `SN_*`,
-  `NOW_SDK_WORKSPACE`. Loaded by the app/pipeline.
+  `WORKSPACES_ROOT`. Loaded by the app/pipeline.
 - **`apps/web/.env`** — only `DATABASE_URL` (Prisma CLI convention).
+
+## Customers, Instances, Projects
+
+A ticket is attributed to a `Customer` → `Instance` (a ServiceNow environment) →
+`FluentProject` (a standalone `now-sdk` project — its own directory, `package.json`,
+`node_modules`, git repo — under `WORKSPACES_ROOT`, default `./workspaces/`, git-ignored).
+There is no shared workspace and no hard-coded scope: which project a ticket builds
+against is resolved per customer + `targetScope` (`global` or `scoped`) at ticket
+creation. `pnpm --filter web seed-demo-customer` registers the existing PDI
+(dev424712) as a demo customer and imports its two already-installed apps
+(`AI Delivery App` scoped, `AI Delivery Global` global) as projects, so the pipeline
+has real projects to build against out of the box. `servicenow/delivery-app/` is the
+legacy single-workspace project this replaces; it's left on disk unmanaged.

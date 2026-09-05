@@ -1,18 +1,10 @@
 import { prisma } from "@/lib/db";
-import { ARTIFACT_TYPE, DEFAULT_TARGET_SCOPE, TICKET_STATUS, type TargetScope } from "@/lib/constants";
-import { config, NOW_SDK_CWD } from "@/lib/config";
+import { ARTIFACT_TYPE, TICKET_STATUS } from "@/lib/constants";
+import { config } from "@/lib/config";
 import { runNowSdk } from "@/lib/nowsdk/cli";
-import {
-  cleanWorkspace,
-  writeGeneratedFiles,
-  snapshotKeys,
-  restoreKeys,
-  snapshotConfig,
-  restoreConfig,
-  writeProjectConfig,
-  withWorkspaceLock,
-} from "@/lib/nowsdk/workspace";
+import { cleanWorkspace, writeGeneratedFiles, snapshotKeys, restoreKeys, withProjectLock } from "@/lib/nowsdk/workspace";
 import { keysAdded, parseKeys } from "@/lib/nowsdk/keys";
+import { toProjectContext } from "@/lib/projects/resolve";
 import { parseGeneratedFiles } from "@/lib/pipeline/parse";
 import { verifyDeployment } from "@/lib/servicenow/verify";
 
@@ -28,7 +20,8 @@ function section(title: string, body: string): string {
 }
 
 /**
- * Build + deploy a ticket's generated ServiceNow code to the PDI, then verify.
+ * Build + deploy a ticket's generated ServiceNow code to its project's
+ * instance, then verify.
  *
  * The ONLY entry point to deploy logic. Hard-requires `READY_FOR_REVIEW` — there
  * is no path that deploys any other status, and nothing calls this without an
@@ -37,7 +30,7 @@ function section(title: string, body: string): string {
 export async function deployTicket(ticketId: string, reviewerId?: string | null): Promise<DeployResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    include: { artifacts: { orderBy: { createdAt: "asc" } } },
+    include: { artifacts: { orderBy: { createdAt: "asc" } }, project: true },
   });
   if (!ticket) return { ok: false, ticketId, status: "?", error: "ticket not found" };
   if (ticket.status !== TICKET_STATUS.READY_FOR_REVIEW) {
@@ -48,12 +41,14 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
       error: `ticket is ${ticket.status}; only READY_FOR_REVIEW tickets can be deployed`,
     };
   }
+  if (!ticket.project) {
+    return { ok: false, ticketId, status: ticket.status, error: "ticket has no FluentProject assigned" };
+  }
+  const project = toProjectContext(ticket.project);
 
   // Latest CODE artifact — a rework loop may have produced more than one.
   const codeArtifact = [...ticket.artifacts].reverse().find((a) => a.type === ARTIFACT_TYPE.CODE);
   const { files, warnings } = parseGeneratedFiles(codeArtifact?.content ?? "");
-
-  const scope: TargetScope = ticket.targetScope === "scoped" ? "scoped" : DEFAULT_TARGET_SCOPE;
 
   await prisma.ticket.update({
     where: { id: ticketId },
@@ -62,7 +57,7 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
 
   let log =
     `# Deploy — ${ticket.title}\n\nStarted: ${new Date().toISOString()}\n` +
-    `Workspace: \`${NOW_SDK_CWD}\`\nTarget scope: **${scope === "scoped" ? "scoped app x_1460392_delivery" : "global"}**\n`;
+    `Project: \`${project.id}\` (${project.kind})\nWorkspace: \`${project.repoPath}\`\n`;
 
   const finishFailed = async (extra: string) => {
     log += extra;
@@ -71,9 +66,8 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
     return { ok: false, ticketId, status: TICKET_STATUS.FAILED, error: extra.slice(0, 500) };
   };
 
-  return withWorkspaceLock(async () => {
-    const keysSnapshot = snapshotKeys();
-    const configSnapshot = snapshotConfig();
+  return withProjectLock(project.repoPath, async () => {
+    const keysSnapshot = snapshotKeys(project.repoPath);
     let deployed = false;
     try {
       if (files.length === 0) {
@@ -82,9 +76,8 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
         );
       }
 
-      writeProjectConfig(scope);
-      const removed = cleanWorkspace();
-      writeGeneratedFiles(files);
+      const removed = cleanWorkspace(project.repoPath);
+      writeGeneratedFiles(project.repoPath, files);
       log += section(
         "Files",
         `Removed: ${removed.join(", ") || "(none)"}\n\nWrote ${files.length} file(s):\n` +
@@ -94,7 +87,7 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
 
       // 1. build (the pipeline gate already verified this, but the workspace may
       //    hold stale files and demo data differs — build again).
-      const build = await runNowSdk(["build"], { timeoutMs: 180_000, maxChars: 24_000 });
+      const build = await runNowSdk(["build"], { cwd: project.repoPath, timeoutMs: 180_000, maxChars: 24_000 });
       log += section(
         `now-sdk build  (exit ${build.code})`,
         [build.stdout, build.stderr].filter(Boolean).join("\n"),
@@ -106,12 +99,13 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
       // What this build added to keys.ts — verification queries these exact
       // sys_ids. On a re-deploy the records may already be in the baseline, so
       // also pass the full set as a fallback.
-      const keysAfter = snapshotKeys();
+      const keysAfter = snapshotKeys(project.repoPath);
       const created = keysAdded(keysSnapshot, keysAfter);
       const allRecords = parseKeys(keysAfter);
 
       // 2. install (deploy)
       const install = await runNowSdk(["install", "--auth", config.SN_AUTH_ALIAS], {
+        cwd: project.repoPath,
         timeoutMs: 300_000,
         maxChars: 24_000,
       });
@@ -126,7 +120,13 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
       await storeLog(ticketId, log + "\n**Build + install exited cleanly. Verifying…**\n");
 
       // 3. verify against the live instance
-      const verification = await verifyDeployment({ scope, created, allRecords });
+      const verification = await verifyDeployment({
+        scope: project.kind,
+        scopeName: project.scope,
+        projectDir: project.repoPath,
+        created,
+        allRecords,
+      });
       await prisma.artifact.create({
         data: { ticketId, type: ARTIFACT_TYPE.DEPLOY_VERIFICATION, content: verification.markdown },
       });
@@ -150,10 +150,7 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
       );
     } finally {
       // keys.ts is regenerated by `now-sdk build`; keep it only on a real deploy.
-      if (!deployed) restoreKeys(keysSnapshot);
-      // The committed now.config.json is always restored — the workspace's
-      // default scope never permanently changes under a deploy.
-      restoreConfig(configSnapshot);
+      if (!deployed) restoreKeys(project.repoPath, keysSnapshot);
     }
   });
 }

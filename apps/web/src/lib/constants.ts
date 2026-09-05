@@ -31,12 +31,30 @@ export const AGENT_ROLES = [
 ] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 
-// Where the pipeline builds/deploys a ticket's artifacts.
-// "global" — plain platform-wide records (the default, what most catalog
-// items want). "scoped" — the x_1460392_delivery application.
+// Where the pipeline builds/deploys a ticket's artifacts. Historically the
+// only axis of choice (one hard-coded global app + one hard-coded scoped
+// app); now mirrors FluentProject.kind for a given customer. Kept as the
+// intake-time signal until tier.ts (Phase 3) picks projects automatically.
 export const TARGET_SCOPES = ["global", "scoped"] as const;
 export type TargetScope = (typeof TARGET_SCOPES)[number];
 export const DEFAULT_TARGET_SCOPE: TargetScope = "global";
+
+// FluentProject.kind — same two values as TargetScope, named for what it is
+// on a project row rather than a ticket's intake-time request.
+export const PROJECT_KINDS = TARGET_SCOPES;
+export type ProjectKind = TargetScope;
+
+// Ticket.executionTier — REFACTOR_BRIEF Phase 3's decision matrix. Phase 1
+// only mirrors targetScope into FLUENT_GLOBAL_APP / FLUENT_SCOPED_APP; the
+// other three values aren't produced by any code yet.
+export const EXECUTION_TIERS = [
+  "FLUENT_GLOBAL_APP",
+  "FLUENT_SCOPED_APP",
+  "FLUENT_MOVE_CUSTOMIZE",
+  "REST_UPDATE_SET_FALLBACK",
+  "NOT_SUPPORTED",
+] as const;
+export type ExecutionTier = (typeof EXECUTION_TIERS)[number];
 
 export const ARTIFACT_TYPE = {
   REQUIREMENTS: "REQUIREMENTS",

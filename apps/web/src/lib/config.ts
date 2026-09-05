@@ -27,7 +27,11 @@ loadEnv({ path: path.join(REPO_ROOT, ".env") });
 const Env = z.object({
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required (repo-root .env)"),
   ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5"),
-  NOW_SDK_WORKSPACE: z.string().min(1).default("./servicenow/delivery-app"),
+  // Root directory holding every customer's Fluent projects
+  // (workspaces/<customer-slug>/<project-slug>/, one per FluentProject row).
+  // Each project is its own git repo with its own node_modules — never
+  // committed here (see root .gitignore).
+  WORKSPACES_ROOT: z.string().min(1).default("./workspaces"),
   SN_AUTH_ALIAS: z.string().min(1).default("pdi"),
   SN_INSTANCE_URL: z.string().optional(),
 });
@@ -40,7 +44,7 @@ if (!parsed.success) {
 
 export const config = parsed.data;
 
-/** Absolute path to the now-sdk workspace (NOW_SDK_WORKSPACE resolved against the repo root). */
-export const NOW_SDK_CWD = path.isAbsolute(config.NOW_SDK_WORKSPACE)
-  ? config.NOW_SDK_WORKSPACE
-  : path.resolve(REPO_ROOT, config.NOW_SDK_WORKSPACE);
+/** Absolute path to the workspaces root (WORKSPACES_ROOT resolved against the repo root). */
+export const WORKSPACES_ROOT = path.isAbsolute(config.WORKSPACES_ROOT)
+  ? config.WORKSPACES_ROOT
+  : path.resolve(REPO_ROOT, config.WORKSPACES_ROOT);

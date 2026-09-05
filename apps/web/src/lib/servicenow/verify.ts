@@ -3,8 +3,6 @@ import { config } from "@/lib/config";
 import type { TargetScope } from "@/lib/constants";
 import type { KeyRecord } from "@/lib/nowsdk/keys";
 
-const SCOPED_APP = "x_1460392_delivery";
-
 interface QueryOutcome {
   table: string;
   query: string;
@@ -13,10 +11,10 @@ interface QueryOutcome {
   raw: string;
 }
 
-async function snQuery(table: string, query: string, fields: string): Promise<QueryOutcome> {
+async function snQuery(projectDir: string, table: string, query: string, fields: string): Promise<QueryOutcome> {
   const { stdout, stderr, code } = await runNowSdk(
     ["query", table, "-q", query, "-f", fields, "--limit", "50", "-o", "json"],
-    { timeoutMs: 60_000, maxChars: 12_000 },
+    { cwd: projectDir, timeoutMs: 60_000, maxChars: 12_000 },
   );
   const raw = (stdout || stderr).trim();
   try {
@@ -45,13 +43,18 @@ function idQuery(ids: string[]): string {
  */
 export async function verifyDeployment(opts: {
   scope: TargetScope;
+  /** The project's real scope string, e.g. "x_1460392_delivery" or "global" —
+   *  the actual customer app, not a hard-coded constant. */
+  scopeName: string;
+  /** The project directory to run `now-sdk query` from. */
+  projectDir: string;
   /** Net-new records from the keys.ts diff for this build. */
   created: KeyRecord[];
   /** Every record in keys.ts after the build — fallback when `created` is empty
    *  (e.g. a re-deploy where the records were already in the baseline). */
   allRecords?: KeyRecord[];
 }): Promise<DeploymentVerification> {
-  const { scope, created } = opts;
+  const { scope, scopeName, projectDir, created } = opts;
   const byTable = (recs: KeyRecord[], t: string) => recs.filter((r) => r.table === t).map((r) => r.id);
   const pick = (t: string) => {
     const net = byTable(created, t);
@@ -62,12 +65,12 @@ export async function verifyDeployment(opts: {
   const tableIds = pick("sys_db_object");
 
   const queries: Promise<QueryOutcome>[] = [];
-  const catIdx = catItemIds.length ? queries.push(snQuery("sc_cat_item", idQuery(catItemIds), "name,sys_id,active,sys_scope.scope")) - 1 : -1;
-  const flowIdx = flowIds.length ? queries.push(snQuery("sys_hub_flow", idQuery(flowIds), "name,sys_id,active")) - 1 : -1;
-  const tableIdx = tableIds.length ? queries.push(snQuery("sys_db_object", idQuery(tableIds), "name,label,sys_id")) - 1 : -1;
+  const catIdx = catItemIds.length ? queries.push(snQuery(projectDir, "sc_cat_item", idQuery(catItemIds), "name,sys_id,active,sys_scope.scope")) - 1 : -1;
+  const flowIdx = flowIds.length ? queries.push(snQuery(projectDir, "sys_hub_flow", idQuery(flowIds), "name,sys_id,active")) - 1 : -1;
+  const tableIdx = tableIds.length ? queries.push(snQuery(projectDir, "sys_db_object", idQuery(tableIds), "name,label,sys_id")) - 1 : -1;
   const appIdx =
     scope === "scoped"
-      ? queries.push(snQuery("sys_app", `scope=${SCOPED_APP}`, "name,scope,version,active")) - 1
+      ? queries.push(snQuery(projectDir, "sys_app", `scope=${scopeName}`, "name,scope,version,active")) - 1
       : -1;
 
   const results = await Promise.all(queries);
@@ -86,7 +89,7 @@ export async function verifyDeployment(opts: {
   const confirmed = appOk && catOk;
 
   const reason = !appOk
-    ? `No sys_app row for scope ${SCOPED_APP} — the scoped install did not land.`
+    ? `No sys_app row for scope ${scopeName} — the scoped install did not land.`
     : catExpected === 0
       ? "This build declared no catalog item — nothing to confirm."
       : catOk
@@ -113,7 +116,7 @@ export async function verifyDeployment(opts: {
   const markdown = [
     `# Deploy Verification`,
     ``,
-    `Instance: \`${config.SN_INSTANCE_URL ?? "(PDI)"}\`  ·  scope: \`${scope === "scoped" ? SCOPED_APP : "global"}\``,
+    `Instance: \`${config.SN_INSTANCE_URL ?? "(PDI)"}\`  ·  scope: \`${scopeName}\``,
     `Checked: ${new Date().toISOString()}`,
     ``,
     `**Result: ${confirmed ? "CONFIRMED" : "NOT CONFIRMED"}** — ${reason}`,

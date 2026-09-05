@@ -12,6 +12,7 @@ import "@/lib/config"; // loads + validates env before anything else
 import { prisma } from "@/lib/db";
 import { createTicket } from "@/lib/tickets";
 import { runPipeline } from "@/lib/pipeline/run";
+import { getDefaultCustomerId, resolveProjectForTicket } from "@/lib/projects/resolve";
 import { parseGeneratedFiles, parseQaVerdict } from "@/lib/pipeline/parse";
 import { ARTIFACT_TYPE } from "@/lib/constants";
 
@@ -40,7 +41,16 @@ async function main() {
     const description = args[1]?.trim() || DEFAULT_DESCRIPTION;
     const targetScope = args[2]?.trim() === "scoped" ? "scoped" : "global";
     console.log(`\nCreating ticket: ${title}  (scope: ${targetScope})`);
-    const ticket = await createTicket({ title, description, targetScope });
+    const customerId = await getDefaultCustomerId();
+    const project = await resolveProjectForTicket({ customerId, kind: targetScope });
+    const ticket = await createTicket({
+      title,
+      description,
+      targetScope,
+      customerId,
+      instanceId: project.instanceId,
+      projectId: project.id,
+    });
     ticketId = ticket.id;
     console.log(`  id = ${ticket.id}\n`);
   }

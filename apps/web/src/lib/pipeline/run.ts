@@ -1,18 +1,12 @@
 import { prisma } from "@/lib/db";
-import {
-  STEP_STATUS,
-  TICKET_STATUS,
-  ARTIFACT_TYPE,
-  DEFAULT_TARGET_SCOPE,
-  type ArtifactType,
-  type TargetScope,
-} from "@/lib/constants";
+import { STEP_STATUS, TICKET_STATUS, ARTIFACT_TYPE, type ArtifactType } from "@/lib/constants";
 import { config } from "@/lib/config";
 import { PIPELINE, ROLE_CONFIG, type PipelineContext } from "@/lib/agents/roles";
 import { runAgent } from "@/lib/agents/runAgent";
 import { resolveAgent } from "@/lib/agents/persona-prompt";
 import { parseQaVerdict, parseReworkFrom, parseGeneratedFiles, type ReworkFrom } from "@/lib/pipeline/parse";
 import { buildWorkspace } from "@/lib/nowsdk/workspace";
+import { toProjectContext } from "@/lib/projects/resolve";
 
 export interface PipelineResult {
   ok: boolean;
@@ -35,9 +29,21 @@ const DERIVED_ARTIFACTS: ArtifactType[] = [
   ARTIFACT_TYPE.DEPLOY_VERIFICATION,
 ];
 
-/** `Ticket.targetScope` as a typed value (defaults to global for older rows). */
-function scopeOf(ticket: { targetScope?: string | null }): TargetScope {
-  return ticket.targetScope === "scoped" ? "scoped" : DEFAULT_TARGET_SCOPE;
+/**
+ * Build `PipelineContext.project` from the ticket's resolved FluentProject row.
+ * A ticket reaching the pipeline without a project is a wiring bug (every
+ * creation path resolves one before calling runPipeline) — fail loudly rather
+ * than silently falling back to a shared workspace.
+ */
+function projectContextOf(ticket: {
+  project: Parameters<typeof toProjectContext>[0] | null;
+}): PipelineContext["project"] {
+  if (!ticket.project) {
+    throw new Error(
+      "ticket has no FluentProject assigned — resolveProjectForTicket must run before runPipeline",
+    );
+  }
+  return toProjectContext(ticket.project);
 }
 
 function artifactTypesFrom(fromOrder: number): ArtifactType[] {
@@ -67,7 +73,7 @@ async function runBuildGate(ticketId: string, ctx: PipelineContext): Promise<{ o
       return { ok: false, log };
     }
 
-    const build = await buildWorkspace(files, { scope: ctx.targetScope });
+    const build = await buildWorkspace(ctx.project.repoPath, files);
     const header =
       build.code === 0
         ? `# Build\n\n✓ \`now-sdk build\` passed (exit 0) — ${build.fileCount} file(s)`
@@ -163,7 +169,7 @@ async function runStages(
         withTools: stage.withTools,
         webTools: stage.webTools,
         buildTool: stage.buildTool,
-        scope: ctx.targetScope,
+        projectDir: ctx.project.repoPath,
         model: agent.model,
       });
 
@@ -259,7 +265,7 @@ export async function runPipeline(
 ): Promise<PipelineResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    include: { steps: true, artifacts: true },
+    include: { steps: true, artifacts: true, project: true },
   });
   if (!ticket) return { ok: false, ticketId, error: "ticket not found" };
 
@@ -275,11 +281,13 @@ export async function runPipeline(
 
   await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.RUNNING } });
 
+  const project = projectContextOf(ticket);
   const ctx: PipelineContext = {
     title: ticket.title,
     description: ticket.description,
     artifacts: {},
-    targetScope: scopeOf(ticket),
+    targetScope: project.kind,
+    project,
   };
   const skipCompleted = canResume
     ? new Set(ticket.steps.filter((s) => s.status === STEP_STATUS.COMPLETE).map((s) => s.order))
@@ -317,7 +325,7 @@ export async function runRework(
 ): Promise<PipelineResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    include: { artifacts: { orderBy: { createdAt: "asc" } } },
+    include: { artifacts: { orderBy: { createdAt: "asc" } }, project: true },
   });
   if (!ticket) return { ok: false, ticketId, error: "ticket not found" };
 
@@ -348,11 +356,13 @@ export async function runRework(
   const round = ticket.reworkRound + 1;
   const fromOrder = ROLE_CONFIG[input.fromRole].order;
 
+  const project = projectContextOf(ticket);
   const ctx: PipelineContext = {
     title: ticket.title,
     description: ticket.description,
     artifacts: {},
-    targetScope: scopeOf(ticket),
+    targetScope: project.kind,
+    project,
     reworkNote: directive,
     reworkRound: round,
   };

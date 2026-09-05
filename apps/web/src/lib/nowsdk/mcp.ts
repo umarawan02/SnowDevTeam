@@ -1,89 +1,95 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import type { TargetScope } from "@/lib/constants";
 import { runNowSdk } from "@/lib/nowsdk/cli";
 import { buildWorkspace } from "@/lib/nowsdk/workspace";
 import { parseGeneratedFiles } from "@/lib/pipeline/parse";
 
 /**
- * In-process MCP server exposing the two read-only now-sdk capabilities the
- * Architect / Senior Dev / Developer agents need:
+ * In-process MCP server exposing the now-sdk capabilities the Architect /
+ * Senior Dev / Developer agents need:
  *
  *  - `explain` — versioned SDK documentation lookup (search → peek → read)
  *  - `query`   — live instance data (naming-conflict checks, choice values, …)
+ *  - `build`   — compile draft code (Developer only)
  *
- * Both are read-only; per the now-sdk skill they run without confirmation.
+ * `explain`/`query` are read-only; per the now-sdk skill they run without
+ * confirmation. All three now run against a specific project directory
+ * (REFACTOR_BRIEF Phase 1 — there is no single shared workspace any more), so
+ * the whole server is built fresh per agent run, pinned to that ticket's
+ * project.
  */
 
-const explainTool = tool(
-  "explain",
-  "Look up official ServiceNow SDK / Fluent documentation for the installed SDK version. " +
-    "Workflow: mode='list' to search topic names, then mode='peek' for a one-line summary, " +
-    "then mode='full' to read the whole topic. Always peek before reading a full topic. " +
-    "Use this for the exact Fluent syntax of any metadata type (Flow, CatalogItem, Table, " +
-    "BusinessRule, Acl, RecordProducer, …) before writing code.",
-  {
-    topic: z
-      .string()
-      .describe("Topic name or search term, e.g. 'flow', 'catalog', 'BusinessRule', 'naming'"),
-    mode: z
-      .enum(["list", "peek", "full"])
-      .default("peek")
-      .describe("'list' = search topic names; 'peek' = short summary; 'full' = entire topic"),
-  },
-  async ({ topic, mode }) => {
-    const args = ["explain", topic];
-    if (mode === "list") args.push("--list");
-    else if (mode === "peek") args.push("--peek");
-    args.push("--format=raw");
+const makeExplainTool = (projectDir: string) =>
+  tool(
+    "explain",
+    "Look up official ServiceNow SDK / Fluent documentation for the installed SDK version. " +
+      "Workflow: mode='list' to search topic names, then mode='peek' for a one-line summary, " +
+      "then mode='full' to read the whole topic. Always peek before reading a full topic. " +
+      "Use this for the exact Fluent syntax of any metadata type (Flow, CatalogItem, Table, " +
+      "BusinessRule, Acl, RecordProducer, …) before writing code.",
+    {
+      topic: z
+        .string()
+        .describe("Topic name or search term, e.g. 'flow', 'catalog', 'BusinessRule', 'naming'"),
+      mode: z
+        .enum(["list", "peek", "full"])
+        .default("peek")
+        .describe("'list' = search topic names; 'peek' = short summary; 'full' = entire topic"),
+    },
+    async ({ topic, mode }) => {
+      const args = ["explain", topic];
+      if (mode === "list") args.push("--list");
+      else if (mode === "peek") args.push("--peek");
+      args.push("--format=raw");
 
-    // Full topics can be 40–60 KB; the essentials are up front and grounding.md
-    // already distils the common rules. Cap it to keep agent context lean.
-    const maxChars = mode === "full" ? 26_000 : 8_000;
-    const { stdout, stderr, code } = await runNowSdk(args, { timeoutMs: 60_000, maxChars });
-    if (code !== 0 && !stdout.trim()) {
-      return {
-        content: [{ type: "text", text: `explain failed (exit ${code}):\n${stderr}` }],
-        isError: true,
-      };
-    }
-    return { content: [{ type: "text", text: stdout.trim() || stderr.trim() || "(no output)" }] };
-  },
-  { annotations: { readOnlyHint: true }, alwaysLoad: true },
-);
+      // Full topics can be 40–60 KB; the essentials are up front and grounding.md
+      // already distils the common rules. Cap it to keep agent context lean.
+      const maxChars = mode === "full" ? 26_000 : 8_000;
+      const { stdout, stderr, code } = await runNowSdk(args, { cwd: projectDir, timeoutMs: 60_000, maxChars });
+      if (code !== 0 && !stdout.trim()) {
+        return {
+          content: [{ type: "text", text: `explain failed (exit ${code}):\n${stderr}` }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: "text", text: stdout.trim() || stderr.trim() || "(no output)" }] };
+    },
+    { annotations: { readOnlyHint: true }, alwaysLoad: true },
+  );
 
-const queryTool = tool(
-  "query",
-  "Query live records from a table on the connected ServiceNow instance (read-only). " +
-    "Use to check whether a similarly-named catalog item / flow / table already exists " +
-    "before proposing a new one, or to read choice values. Returns JSON, capped at 20 rows.",
-  {
-    table: z.string().describe("Table name, e.g. 'sc_cat_item', 'sys_hub_flow', 'sys_db_object'"),
-    query: z
-      .string()
-      .describe("Encoded query (sysparm_query), e.g. 'nameLIKElaptop' or 'active=true^nameSTARTSWITHReq'"),
-    fields: z
-      .string()
-      .optional()
-      .describe("Optional comma-separated field list, e.g. 'name,sys_id,short_description'"),
-  },
-  async ({ table, query, fields }) => {
-    const args = ["query", table, "-q", query, "--limit", "20", "-o", "json"];
-    if (fields) args.push("-f", fields);
+const makeQueryTool = (projectDir: string) =>
+  tool(
+    "query",
+    "Query live records from a table on the connected ServiceNow instance (read-only). " +
+      "Use to check whether a similarly-named catalog item / flow / table already exists " +
+      "before proposing a new one, or to read choice values. Returns JSON, capped at 20 rows.",
+    {
+      table: z.string().describe("Table name, e.g. 'sc_cat_item', 'sys_hub_flow', 'sys_db_object'"),
+      query: z
+        .string()
+        .describe("Encoded query (sysparm_query), e.g. 'nameLIKElaptop' or 'active=true^nameSTARTSWITHReq'"),
+      fields: z
+        .string()
+        .optional()
+        .describe("Optional comma-separated field list, e.g. 'name,sys_id,short_description'"),
+    },
+    async ({ table, query, fields }) => {
+      const args = ["query", table, "-q", query, "--limit", "20", "-o", "json"];
+      if (fields) args.push("-f", fields);
 
-    const { stdout, stderr, code } = await runNowSdk(args, { timeoutMs: 60_000, maxChars: 12_000 });
-    if (code !== 0 && !stdout.trim()) {
-      return {
-        content: [{ type: "text", text: `query failed (exit ${code}):\n${stderr}` }],
-        isError: true,
-      };
-    }
-    return { content: [{ type: "text", text: stdout.trim() || "(no records)" }] };
-  },
-  { annotations: { readOnlyHint: true }, alwaysLoad: true },
-);
+      const { stdout, stderr, code } = await runNowSdk(args, { cwd: projectDir, timeoutMs: 60_000, maxChars: 12_000 });
+      if (code !== 0 && !stdout.trim()) {
+        return {
+          content: [{ type: "text", text: `query failed (exit ${code}):\n${stderr}` }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: "text", text: stdout.trim() || "(no records)" }] };
+    },
+    { annotations: { readOnlyHint: true }, alwaysLoad: true },
+  );
 
-const makeBuildTool = (scope?: TargetScope) =>
+const makeBuildTool = (projectDir: string) =>
   tool(
     "build",
     "Compile the ServiceNow Fluent files you have written. Pass EVERY file you " +
@@ -109,7 +115,7 @@ const makeBuildTool = (scope?: TargetScope) =>
           isError: true,
         };
       }
-      const r = await buildWorkspace(valid, { scope });
+      const r = await buildWorkspace(projectDir, valid);
       const head =
         r.code === 0
           ? `✓ now-sdk build passed (exit 0) · ${r.fileCount} file(s)`
@@ -124,19 +130,16 @@ const makeBuildTool = (scope?: TargetScope) =>
   );
 
 /**
- * Fresh in-process `nowsdk` MCP server for one agent run. `scope` fixes which
- * `now.config.json` the Developer's `build` tool compiles against.
+ * Fresh in-process `nowsdk` MCP server for one agent run, pinned to
+ * `projectDir` — the ticket's resolved FluentProject directory.
  */
-export function createNowsdkMcpServer(opts: { scope?: TargetScope } = {}) {
+export function createNowsdkMcpServer(projectDir: string) {
   return createSdkMcpServer({
     name: "nowsdk",
     version: "1.0.0",
-    tools: [explainTool, queryTool, makeBuildTool(opts.scope)],
+    tools: [makeExplainTool(projectDir), makeQueryTool(projectDir), makeBuildTool(projectDir)],
   });
 }
-
-/** Default (scope-agnostic) server for callers that don't build. */
-export const nowsdkMcpServer = createNowsdkMcpServer();
 
 export const NOWSDK_TOOL_NAMES = ["mcp__nowsdk__explain", "mcp__nowsdk__query"];
 /** Given to the Developer only — an actual `now-sdk build` of its draft code. */

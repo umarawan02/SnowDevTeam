@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { NOW_SDK_CWD, REPO_ROOT } from "@/lib/config";
+import { REPO_ROOT } from "@/lib/config";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,24 +17,26 @@ function truncate(s: string, max: number): string {
 }
 
 /**
- * The now-sdk CLI JS entrypoint. Invoking it with `node <entry>` avoids the
- * Windows `.cmd` shim (which execFile can't run without `shell: true`) and works
- * the same on every platform. pnpm's hoisted linker puts the package at the
- * repo-root node_modules.
+ * The now-sdk CLI JS entrypoint for a given project directory. Invoking it
+ * with `node <entry>` avoids the Windows `.cmd` shim (which execFile can't
+ * run without `shell: true`) and works the same on every platform.
+ *
+ * Every FluentProject (REFACTOR_BRIEF Phase 1) has its own `npm install`, so
+ * its own now-sdk lives in its own `node_modules` — try that first. Fall back
+ * to this monorepo's hoisted install only for legacy callers that haven't
+ * migrated to a real project yet (e.g. `servicenow/delivery-app` itself).
  */
-const NOW_SDK_ENTRY = (() => {
+function resolveNowSdkEntry(cwd: string): string {
   const candidates = [
+    path.join(cwd, "node_modules", "@servicenow", "sdk", "bin", "index.js"),
     path.join(REPO_ROOT, "node_modules", "@servicenow", "sdk", "bin", "index.js"),
-    path.join(NOW_SDK_CWD, "node_modules", "@servicenow", "sdk", "bin", "index.js"),
   ];
   const found = candidates.find((p) => fs.existsSync(p));
   if (!found) {
-    throw new Error(
-      `Could not locate the now-sdk CLI entrypoint. Looked in:\n${candidates.join("\n")}`,
-    );
+    throw new Error(`Could not locate the now-sdk CLI entrypoint. Looked in:\n${candidates.join("\n")}`);
   }
   return found;
-})();
+}
 
 export interface NowSdkResult {
   stdout: string;
@@ -43,20 +45,23 @@ export interface NowSdkResult {
 }
 
 /**
- * Run the workspace-local `now-sdk` CLI against `servicenow/delivery-app`.
- * Used by the agent MCP tools (explain / query) and, later, the Phase 3 deploy flow.
+ * Run the `now-sdk` CLI in `cwd` — always a Fluent project directory (a
+ * FluentProject's `repoPath`, or `servicenow/delivery-app` for legacy
+ * callers). There is no default: every caller must say which project it
+ * means, now that more than one exists.
  */
 export async function runNowSdk(
   args: string[],
-  opts: { timeoutMs?: number; maxChars?: number } = {},
+  opts: { cwd: string; timeoutMs?: number; maxChars?: number },
 ): Promise<NowSdkResult> {
   const max = opts.maxChars ?? DEFAULT_MAX_CHARS;
+  const entry = resolveNowSdkEntry(opts.cwd);
   try {
     const { stdout, stderr } = await execFileAsync(
       process.execPath,
-      [NOW_SDK_ENTRY, ...args],
+      [entry, ...args],
       {
-        cwd: NOW_SDK_CWD,
+        cwd: opts.cwd,
         timeout: opts.timeoutMs ?? 90_000,
         maxBuffer: 20 * 1024 * 1024,
         windowsHide: true,

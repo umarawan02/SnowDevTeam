@@ -49,7 +49,28 @@ model Ticket {
   reworkReason String?
   // Where the pipeline builds and deploys: "global" (default — plain
   // platform-wide records) or "scoped" (the x_1460392_delivery app).
+  // Superseded by project.kind once tier.ts (Phase 3) picks projects
+  // automatically; kept as the intake-time signal for now.
   targetScope String @default("global")
+
+  // Multi-customer model (REFACTOR_BRIEF Phase 1). All nullable — rows
+  // created before this phase have none of these set.
+  customerId String?
+  customer   Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  instanceId String?
+  instance   Instance?      @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  projectId  String?
+  project    FluentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  // FLUENT_GLOBAL_APP | FLUENT_SCOPED_APP | FLUENT_MOVE_CUSTOMIZE |
+  // REST_UPDATE_SET_FALLBACK | NOT_SUPPORTED — mirrors targetScope for now;
+  // becomes a real decision in tier.ts (Phase 3).
+  executionTier String?
+  tierRationale String?
+  gitBranch     String?
+  prUrl         String?
+  // null | DEV | TEST | PROD — wired up in Phase 4.
+  releaseGate String?
+
   // Optional intake metadata (captured by the intake wizard; all nullable).
   requester   String?
   priority    String? // LOW | MEDIUM | HIGH
@@ -150,4 +171,87 @@ model AgentPersona {
   model      String? // optional per-agent model override
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+// --- REFACTOR_BRIEF Phase 1: Customers, Instances, Projects ---------------
+// Replaces the hard-coded scope pair (x_1460392_delivery / "AI Delivery
+// Global") with a real data model: one Customer owns N Instances (ServiceNow
+// environments) and N FluentProjects (Fluent apps, each pinned to one
+// Instance). A Ticket is attributed to a customer/instance/project instead of
+// deploying into a shared, vendor-owned workspace.
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  instances Instance[]
+  projects  FluentProject[]
+  tickets   Ticket[]
+}
+
+model Instance {
+  id   String @id @default(cuid())
+  name String
+  url  String
+  // dev | test | prod
+  env String @default("dev")
+
+  // Populated by the release probe (Phase 3): family name (Yokohama, Zurich,
+  // Australia, …) and raw build info from sys_properties.
+  releaseName       String?
+  releaseBuild      String?
+  releaseDetectedAt DateTime?
+
+  // oauth_cc | basic — Phase 4 replaces basic auth with per-instance OAuth
+  // client-credentials. credentialRef is an opaque pointer into a secret
+  // store (env-var-backed for now); never the secret itself.
+  authMode              String  @default("basic")
+  credentialRef         String
+  readOnlyCredentialRef String?
+
+  isDeployTarget Boolean @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  projects FluentProject[]
+  tickets  Ticket[]
+
+  @@unique([customerId, name])
+}
+
+model FluentProject {
+  id   String @id @default(cuid())
+  name String
+
+  // "global" or "x_…" / "sn_…"
+  scope   String
+  scopeId String
+  // "global" | "scoped"
+  kind String
+
+  // Path to the project directory, relative to WORKSPACES_ROOT.
+  repoPath      String
+  gitRemote     String?
+  defaultBranch String  @default("main")
+  // "init" | "init_from" | "import" — how this project was created.
+  createdVia String
+
+  packageResolverVersion String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  instanceId String?
+  instance   Instance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  tickets Ticket[]
+
+  @@unique([customerId, scopeId])
 }

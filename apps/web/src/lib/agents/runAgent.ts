@@ -1,12 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "@/lib/config";
-import type { TargetScope } from "@/lib/constants";
-import {
-  createNowsdkMcpServer,
-  nowsdkMcpServer,
-  NOWSDK_TOOL_NAMES,
-  NOWSDK_BUILD_TOOL,
-} from "@/lib/nowsdk/mcp";
+import { createNowsdkMcpServer, NOWSDK_TOOL_NAMES, NOWSDK_BUILD_TOOL } from "@/lib/nowsdk/mcp";
 
 export interface RunAgentInput {
   systemPrompt: string;
@@ -17,8 +11,10 @@ export interface RunAgentInput {
   webTools?: boolean;
   /** Also allow the `build` tool (Developer — compile draft code). Implies withTools. */
   buildTool?: boolean;
-  /** Target scope for the `build` tool's `now-sdk build` (Developer). */
-  scope?: TargetScope;
+  /** The ticket's resolved FluentProject directory. Required whenever any of
+   *  withTools/webTools/buildTool is set — every nowsdk MCP tool (explain,
+   *  query, build) runs `now-sdk` against a specific project. */
+  projectDir?: string;
   model?: string;
 }
 
@@ -41,19 +37,19 @@ export interface RunAgentResult {
  *
  * - `systemPrompt` is a plain string → it fully replaces the default system prompt.
  * - `tools: []` removes every built-in tool; tool-using agents get only the
- *   in-process `nowsdk` MCP server (explain / query).
+ *   in-process `nowsdk` MCP server (explain / query / build), pinned to `projectDir`.
  * - `settingSources: []` keeps the agent isolated from repo CLAUDE.md / AGENTS.md
  *   / settings.
  * Throws on an error result or empty output so the orchestrator can mark the
  * step FAILED.
  */
 export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
-  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool, scope } = input;
+  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool, projectDir } = input;
   const model = input.model ?? config.ANTHROPIC_MODEL;
-
-  // The build tool compiles against a specific now.config.json — give this run
-  // its own MCP server pinned to that scope. Other runs share the default.
-  const mcpServer = buildTool ? createNowsdkMcpServer({ scope }) : nowsdkMcpServer;
+  const needsNowsdk = withTools || webTools || buildTool;
+  if (needsNowsdk && !projectDir) {
+    throw new Error("runAgent: projectDir is required when withTools/webTools/buildTool is set");
+  }
 
   const toolCalls: ToolCall[] = [];
   const assistantText: string[] = [];
@@ -73,9 +69,9 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       settingSources: [],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
-      ...(withTools || webTools || buildTool
+      ...(needsNowsdk
         ? {
-            mcpServers: { nowsdk: mcpServer },
+            mcpServers: { nowsdk: createNowsdkMcpServer(projectDir!) },
             allowedTools: [
               ...NOWSDK_TOOL_NAMES,
               ...(buildTool ? [NOWSDK_BUILD_TOOL] : []),

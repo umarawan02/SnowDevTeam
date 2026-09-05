@@ -5,6 +5,7 @@ import { getConversation } from "@/lib/intake/store";
 import { extractReadyBlock, type IntakeReady } from "@/lib/intake/parse";
 import { createTicket } from "@/lib/tickets";
 import { runPipeline } from "@/lib/pipeline/run";
+import { getDefaultCustomerId, resolveProjectForTicket } from "@/lib/projects/resolve";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     transcript,
   ].join("\n");
 
+  const customerId = await getDefaultCustomerId();
+  const project = await resolveProjectForTicket({ customerId, kind: targetScope });
+
   const ticket = await createTicket({
     title,
     description,
@@ -75,6 +79,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     category: ready?.category ?? null,
     targetScope,
     createdById: user.id,
+    customerId,
+    instanceId: project.instanceId,
+    projectId: project.id,
   });
 
   await prisma.intakeConversation.update({
