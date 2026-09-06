@@ -100,6 +100,26 @@ export function roleMeta(role: string) {
   );
 }
 
+/** The route/tier a ticket was assigned (NATIVE_ENGINE_BRIEF §6). */
+export function tierMeta(tier: string | null | undefined): { label: string; tone: Tone } | null {
+  switch (tier) {
+    case "NATIVE_GLOBAL":
+      return { label: "Native · Global", tone: "ok" };
+    case "NATIVE_SCOPED":
+      return { label: "Native · scoped app", tone: "ok" };
+    case "FLUENT_FLOW":
+      return { label: "Fluent flow", tone: "accent" };
+    case "FLUENT_SCOPED_APP":
+      return { label: "Fluent · new app", tone: "accent" };
+    case "FLUENT_GLOBAL_APP":
+      return { label: "Fluent · Global app", tone: "accent" };
+    case "NOT_SUPPORTED":
+      return { label: "Not supported", tone: "crit" };
+    default:
+      return tier ? { label: tier, tone: "idle" } : null;
+  }
+}
+
 /** Human label for a ticket's target scope. */
 export function scopeLabel(scope: string | null | undefined): { label: string; full: string } {
   if (!scope || scope === "global") return { label: "Global", full: "Global scope" };

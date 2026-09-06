@@ -1,14 +1,16 @@
 # Customer / instance onboarding
 
-> Partial — covers what NATIVE_ENGINE_BRIEF Phase 3 needs. Phase 7 adds the
-> read-only/deploy user split, `sys_update_set_source` for promotion, and the
-> full runbook.
+The default per instance is **`authMode = "oauth_cc"`** with **two** ServiceNow
+service users — `svc_snowdevteam_ro` (agent probes, `snc_read_only`) and
+`svc_snowdevteam_deploy` (writes + promotion) — each with its own
+client-credentials OAuth client. `setup-service-users` provisions both;
+`setup-oauth` (single user) is the older quick path.
 
 ## 1. Register the customer and instance
 
 ```
-pnpm --filter web seed-demo-customer          # the demo PDI, or:
-# (admin UI CRUD — Phase 7)
+pnpm --filter web seed-demo-customer          # the demo PDI, or
+# /settings/infrastructure                    # New customer / New instance (admin)
 ```
 
 An `Instance` row needs: `url`, `env` (`dev` | `test` | `prod`), and a

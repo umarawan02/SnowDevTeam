@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconDashboard, IconBoard, IconAgents, IconUsers, IconPlus } from "./icons";
+import { IconDashboard, IconBoard, IconAgents, IconUsers, IconServer, IconPlus } from "./icons";
 import { canManageUsers } from "@/lib/auth/rbac";
 import { SidebarUser } from "./SidebarUser";
 import type { CurrentUser } from "@/lib/auth/current-user";
@@ -23,7 +23,11 @@ export function SideNav({
 }) {
   const pathname = usePathname() || "/";
   const nav = canManageUsers(user)
-    ? [...NAV, { href: "/settings/users", label: "Users", Icon: IconUsers, match: (p: string) => p.startsWith("/settings/users") }]
+    ? [
+        ...NAV,
+        { href: "/settings/infrastructure", label: "Infrastructure", Icon: IconServer, match: (p: string) => p.startsWith("/settings/infrastructure") },
+        { href: "/settings/users", label: "Users", Icon: IconUsers, match: (p: string) => p.startsWith("/settings/users") },
+      ]
     : NAV;
 
   const activeId = pathname.startsWith("/intake/") ? pathname.split("/")[2] : null;
