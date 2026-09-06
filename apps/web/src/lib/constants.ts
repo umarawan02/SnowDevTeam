@@ -62,6 +62,11 @@ export const ARTIFACT_TYPE = {
   TASK_LIST: "TASK_LIST",
   CODE: "CODE",
   BUILD_LOG: "BUILD_LOG",
+  // Native engine (NATIVE_ENGINE_BRIEF Phase 4): the Developer's output for a
+  // native-tier ticket is a validated JSON change plan, and the reviewer
+  // approves its rendered field-level diff.
+  CHANGE_PLAN: "CHANGE_PLAN",
+  CHANGE_PLAN_DIFF: "CHANGE_PLAN_DIFF",
   TEST_PLAN: "TEST_PLAN",
   QA_REPORT: "QA_REPORT",
   DEPLOY_LOG: "DEPLOY_LOG",

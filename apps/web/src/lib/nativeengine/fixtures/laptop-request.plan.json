@@ -1,0 +1,119 @@
+{
+  "scope": "global",
+  "updateSetName": "SDT-abc123 Laptop request catalog item",
+  "changes": [
+    {
+      "id": "cat_item",
+      "table": "sc_cat_item",
+      "op": "insert",
+      "coalesce": { "name": "name" },
+      "fields": {
+        "name": "Laptop request",
+        "short_description": "Request a standard-issue laptop",
+        "description": "Order a company laptop. Manager approval is required before fulfilment.",
+        "active": true,
+        "sc_catalogs": { "$lookup": { "table": "sc_catalog", "query": "title=Service Catalog", "field": "sys_id" } },
+        "category": { "$lookup": { "table": "sc_category", "query": "title=Hardware", "field": "sys_id" } }
+      },
+      "reason": "The catalog item users order from."
+    },
+    {
+      "id": "var_model",
+      "table": "item_option_new",
+      "op": "insert",
+      "coalesce": { "name": "name", "cat_item": "cat_item" },
+      "fields": {
+        "name": "laptop_model",
+        "question_text": "Which model?",
+        "type": "3",
+        "cat_item": { "$ref": "cat_item" },
+        "mandatory": true,
+        "order": "100"
+      },
+      "reason": "Lets the requester pick a hardware model."
+    },
+    {
+      "id": "var_justification",
+      "table": "item_option_new",
+      "op": "insert",
+      "coalesce": { "name": "name", "cat_item": "cat_item" },
+      "fields": {
+        "name": "business_justification",
+        "question_text": "Business justification",
+        "type": "2",
+        "cat_item": { "$ref": "cat_item" },
+        "mandatory": true,
+        "order": "200"
+      },
+      "reason": "Captures why the laptop is needed for the approver."
+    },
+    {
+      "id": "approver_util",
+      "table": "sys_script_include",
+      "op": "insert",
+      "coalesce": { "name": "name" },
+      "fields": {
+        "name": "LaptopRequestUtil",
+        "api_name": "global.LaptopRequestUtil",
+        "active": true,
+        "access": "package_private",
+        "description": "Resolves the requester's manager for laptop-request approval routing."
+      },
+      "script": { "file": "laptop-request.approver.js" },
+      "reason": "Approval routing needs the requester's manager; a script include keeps it testable."
+    },
+    {
+      "id": "notify_submitted",
+      "table": "sysevent_email_action",
+      "op": "insert",
+      "coalesce": { "name": "name", "collection": "collection" },
+      "fields": {
+        "name": "Laptop request submitted",
+        "collection": "sc_req_item",
+        "active": true,
+        "subject": "Your laptop request has been submitted",
+        "message_html": "<p>We received your laptop request and it is awaiting manager approval.</p>"
+      },
+      "reason": "Acknowledges the request to the requester."
+    },
+    {
+      "id": "notify_approved",
+      "table": "sysevent_email_action",
+      "op": "insert",
+      "coalesce": { "name": "name", "collection": "collection" },
+      "fields": {
+        "name": "Laptop request approved",
+        "collection": "sc_req_item",
+        "active": true,
+        "subject": "Your laptop request was approved",
+        "message_html": "<p>Your laptop request was approved and is now with the fulfilment team.</p>"
+      },
+      "reason": "Tells the requester fulfilment has started."
+    },
+    {
+      "id": "atf_test",
+      "table": "sys_atf_test",
+      "op": "insert",
+      "coalesce": { "name": "name" },
+      "fields": {
+        "name": "Laptop request — submit and approve",
+        "active": true,
+        "description": "Orders the laptop item, asserts the RITM is created and pending approval."
+      },
+      "reason": "Regression coverage for the new catalog item."
+    },
+    {
+      "id": "atf_step_order",
+      "table": "sys_atf_step",
+      "op": "insert",
+      "coalesce": { "test": "test", "order": "order" },
+      "fields": {
+        "test": { "$ref": "atf_test" },
+        "step_config": { "$lookup": { "table": "sys_atf_step_config", "query": "name=Order Catalog Item", "field": "sys_id" } },
+        "order": "100",
+        "description": "Order the Laptop request item as an end user."
+      },
+      "reason": "First ATF step — place the order."
+    }
+  ]
+}
