@@ -9,6 +9,7 @@ import { PipelineFlow } from "@/components/ticket/PipelineFlow";
 import { BuiltFlowDiagram } from "@/components/ticket/BuiltFlowDiagram";
 import { ArtifactTabs } from "@/components/ArtifactTabs";
 import { ReviewGate } from "@/components/ReviewGate";
+import { ReleaseGate } from "@/components/ReleaseGate";
 
 const POLL_MS = 3000;
 
@@ -17,11 +18,13 @@ export function TicketDetail({
   instanceLabel,
   personas,
   canReview,
+  canAdmin = false,
 }: {
   initial: TicketDetailJson;
   instanceLabel: string;
   personas: Record<string, PersonaJson>;
   canReview: boolean;
+  canAdmin?: boolean;
 }) {
   const [ticket, setTicket] = useState<TicketDetailJson>(initial);
 
@@ -106,6 +109,17 @@ export function TicketDetail({
       )}
       {ticket.status === "DEPLOYED" && (
         <div className="deploybanner ok">✓ Deployed to {instanceLabel} — see the Deploy Verification tab.</div>
+      )}
+      {ticket.nativeDeployment && (
+        <ReleaseGate
+          ticketId={ticket.id}
+          deployment={ticket.nativeDeployment}
+          releaseGate={ticket.releaseGate}
+          changeRequestRef={ticket.changeRequestRef}
+          canReview={canReview}
+          canAdmin={canAdmin}
+          onChanged={refetch}
+        />
       )}
       {ticket.status === "FAILED" && hasDeployLog && (
         <div className="deploybanner crit">Deploy failed — see the Deploy Log tab.</div>

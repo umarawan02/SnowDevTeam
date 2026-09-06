@@ -46,6 +46,10 @@ export const ARTIFACT_META: Record<ArtifactType, { label: string; role: AgentRol
   QA_REPORT: { label: "QA Report", role: "QA" },
   DEPLOY_LOG: { label: "Deploy Log", role: "QA" },
   DEPLOY_VERIFICATION: { label: "Deploy Verification", role: "QA" },
+  PROMOTE_LOG: { label: "Promote Log", role: "QA" },
+  PREVIEW_PROBLEMS: { label: "Preview Problems", role: "QA" },
+  ATF_RESULTS: { label: "ATF Results", role: "QA" },
+  INSTANCE_SCAN: { label: "Instance Scan", role: "QA" },
 };
 
 /** Artifact types shown as tabs, in order (pipeline output, then deploy). */
@@ -58,8 +62,12 @@ export const ARTIFACT_TAB_ORDER: ArtifactType[] = [
   "BUILD_LOG",
   "CHANGE_PLAN_DIFF",
   "QA_REPORT",
+  "ATF_RESULTS",
   "DEPLOY_LOG",
   "DEPLOY_VERIFICATION",
+  "PREVIEW_PROBLEMS",
+  "PROMOTE_LOG",
+  "INSTANCE_SCAN",
 ];
 
 export const TERMINAL_TICKET_STATUSES: TicketStatus[] = [

@@ -2,6 +2,7 @@ import { runNowSdk } from "@/lib/nowsdk/cli";
 import { config } from "@/lib/config";
 import type { TargetScope } from "@/lib/constants";
 import type { KeyRecord } from "@/lib/nowsdk/keys";
+import type { SnowClient } from "@/lib/servicenow/client";
 
 interface QueryOutcome {
   table: string;
@@ -162,6 +163,77 @@ export async function verifyDeployment(opts: {
     ...[app, catItems, flows, tables]
       .filter((o): o is QueryOutcome => o != null)
       .flatMap((o) => [`### \`${o.table}\` — \`${o.query}\``, "```json", o.raw, "```", ""]),
+  ].join("\n");
+
+  return { confirmed, reason, markdown };
+}
+
+// --- Native engine (NATIVE_ENGINE_BRIEF §5.2) -----------------------------
+
+const SCOPELESS_TABLES = new Set(["sys_atf_test_suite_test", "sys_security_acl_role", "io_set_item"]);
+
+/**
+ * Post-apply check for the native engine: re-query every record the change plan
+ * created and confirm it exists, is active where the table has an `active`
+ * field, and its `sys_scope` matches the intended scope. A clean apply is not
+ * evidence — the records must actually resolve.
+ */
+export async function verifyNativeRecords(
+  client: SnowClient,
+  opts: {
+    created: { changeId: string; table: string; sysId: string }[];
+    expectedScopeSysId: string;
+    /** The scope *name* ("global", "x_acme_hr") for the human-readable check. */
+    expectedScopeName: string;
+  },
+): Promise<DeploymentVerification> {
+  const rows: { changeId: string; table: string; sysId: string; ok: boolean; note: string }[] = [];
+
+  for (const rec of opts.created) {
+    try {
+      const r = await client.table.getOne<Record<string, unknown>>(rec.table, {
+        sysId: rec.sysId,
+        fields: "sys_id,active,name,short_description,sys_scope,sys_scope.scope",
+      });
+      if (!r) {
+        rows.push({ ...rec, ok: false, note: "not found on the instance" });
+        continue;
+      }
+      const problems: string[] = [];
+      if ("active" in r && (r.active === false || r.active === "false")) problems.push("inactive");
+      const scopeVal = String(r["sys_scope.scope"] ?? r["sys_scope"] ?? "");
+      if (!SCOPELESS_TABLES.has(rec.table) && scopeVal && scopeVal !== opts.expectedScopeName && !(opts.expectedScopeName === "global" && (scopeVal === "global" || scopeVal === "Global"))) {
+        problems.push(`sys_scope="${scopeVal}" (expected "${opts.expectedScopeName}")`);
+      }
+      rows.push({
+        ...rec,
+        ok: problems.length === 0,
+        note: problems.length ? problems.join("; ") : `\`${String(r.name ?? r.short_description ?? "")}\``,
+      });
+    } catch (e) {
+      rows.push({ ...rec, ok: false, note: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  const bad = rows.filter((r) => !r.ok);
+  const confirmed = bad.length === 0 && rows.length > 0;
+  const reason = confirmed
+    ? `All ${rows.length} record(s) resolve on the instance, active, sys_scope = ${opts.expectedScopeName}.`
+    : rows.length === 0
+      ? "No records were applied."
+      : `${bad.length}/${rows.length} record(s) failed verification: ${bad.map((b) => `${b.table}/${b.sysId} (${b.note})`).join("; ")}`;
+
+  const markdown = [
+    "# Deploy Verification (native)",
+    "",
+    `Checked: ${new Date().toISOString()}  ·  scope: \`${opts.expectedScopeName}\``,
+    "",
+    `**Result: ${confirmed ? "CONFIRMED" : "NOT CONFIRMED"}** — ${reason}`,
+    "",
+    "| Change | Table | sys_id | OK | Note |",
+    "| --- | --- | --- | --- | --- |",
+    ...rows.map((r) => `| ${r.changeId} | \`${r.table}\` | \`${r.sysId}\` | ${r.ok ? "✓" : "✗"} | ${r.note.replace(/\|/g, "\\|")} |`),
+    "",
   ].join("\n");
 
   return { confirmed, reason, markdown };

@@ -106,7 +106,7 @@
       "id": "atf_step_order",
       "table": "sys_atf_step",
       "op": "insert",
-      "coalesce": { "test": "test", "order": "order" },
+      "coalesce": { "test": "test", "step_config": "step_config" },
       "fields": {
         "test": { "$ref": "atf_test" },
         "step_config": { "$lookup": { "table": "sys_atf_step_config", "query": "name=Order Catalog Item", "field": "sys_id" } },
@@ -114,6 +114,30 @@
         "description": "Order the Laptop request item as an end user."
       },
       "reason": "First ATF step — place the order."
+    },
+    {
+      "id": "atf_suite",
+      "table": "sys_atf_test_suite",
+      "op": "insert",
+      "coalesce": { "name": "name" },
+      "fields": {
+        "name": "Laptop request",
+        "active": true,
+        "description": "Suite wrapping the Laptop request ATF test(s) so QA can run them headless."
+      },
+      "reason": "sn_cicd/testsuite/run needs a suite; one test alone can't be run headless."
+    },
+    {
+      "id": "atf_suite_test",
+      "table": "sys_atf_test_suite_test",
+      "op": "insert",
+      "coalesce": { "test_suite": "test_suite", "test": "test" },
+      "fields": {
+        "test_suite": { "$ref": "atf_suite" },
+        "test": { "$ref": "atf_test" },
+        "order": "100"
+      },
+      "reason": "Adds the submit-and-approve test to the Laptop request suite."
     }
   ]
 }

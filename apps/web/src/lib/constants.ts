@@ -48,8 +48,13 @@ export type ProjectKind = TargetScope;
 // only mirrors targetScope into FLUENT_GLOBAL_APP / FLUENT_SCOPED_APP; the
 // other three values aren't produced by any code yet.
 export const EXECUTION_TIERS = [
+  // Native engine (NATIVE_ENGINE_BRIEF Phase 5+). The router (Phase 6) assigns
+  // these; `deployTicket` sends anything starting "NATIVE" to the apply engine.
+  "NATIVE_GLOBAL",
+  "NATIVE_SCOPED",
   "FLUENT_GLOBAL_APP",
   "FLUENT_SCOPED_APP",
+  "FLUENT_FLOW",
   "FLUENT_MOVE_CUSTOMIZE",
   "REST_UPDATE_SET_FALLBACK",
   "NOT_SUPPORTED",
@@ -71,5 +76,31 @@ export const ARTIFACT_TYPE = {
   QA_REPORT: "QA_REPORT",
   DEPLOY_LOG: "DEPLOY_LOG",
   DEPLOY_VERIFICATION: "DEPLOY_VERIFICATION",
+  // Native engine Phase 5 (apply / verify / promote).
+  PROMOTE_LOG: "PROMOTE_LOG",
+  PREVIEW_PROBLEMS: "PREVIEW_PROBLEMS",
+  ATF_RESULTS: "ATF_RESULTS",
+  INSTANCE_SCAN: "INSTANCE_SCAN",
 } as const;
 export type ArtifactType = (typeof ARTIFACT_TYPE)[keyof typeof ARTIFACT_TYPE];
+
+// Ticket.releaseGate — the native engine's promotion ladder
+// (NATIVE_ENGINE_BRIEF Phase 5). apply.ts sets DEV; promote.ts advances.
+export const RELEASE_GATE = {
+  DEV: "DEV",
+  TEST: "TEST",
+  PROD: "PROD",
+} as const;
+export type ReleaseGate = (typeof RELEASE_GATE)[keyof typeof RELEASE_GATE];
+
+// NativeDeployment.state — lifecycle of one ticket's Table-API deployment.
+export const NATIVE_DEPLOY_STATE = {
+  APPLYING: "APPLYING",
+  APPLIED: "APPLIED",
+  APPLY_FAILED: "APPLY_FAILED",
+  PROMOTING: "PROMOTING",
+  IN_TEST: "IN_TEST",
+  IN_PROD: "IN_PROD",
+  ROLLED_BACK: "ROLLED_BACK",
+} as const;
+export type NativeDeployState = (typeof NATIVE_DEPLOY_STATE)[keyof typeof NATIVE_DEPLOY_STATE];

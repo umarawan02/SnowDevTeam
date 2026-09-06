@@ -65,6 +65,38 @@ pnpm --filter web smoke-cleanup <instanceId>  # sweep, if a smoke crashed mid-ru
 The findings gate the Phase 4–6 design — see
 `docs/servicenow-smoke-findings.md`.
 
+## 5. Native engine resource (once per instance)
+
+```
+pnpm --filter web setup-native-engine <instanceId>
+```
+
+Installs the **SnowDevTeam Native Engine** Scripted REST resource (a Global
+`sys_script_include` + `sys_ws_definition` + two `sys_ws_operation` rows), and
+sets `sn_atf.schedule.enabled = true` (without it `sn_cicd/testsuite/run`
+rejects every run). It is required before `apply.ts` can write: a headless REST
+session can't make an update set current (smoke open items #1/#2), so the writes
+run server-side through this resource with `new GlideUpdateSet().set()` first.
+Idempotent — re-run to push script changes. Source of truth:
+`apps/web/src/lib/nativeengine/serverscript/apply-resource.js`.
+
+The base path is `/api/<glide.appcreator.company.code>/sdt_native` (Global
+Scripted REST APIs are namespaced by the company-code property, not `global`).
+
+Phase 5 supports the **Global route only**. A scoped-app target would need a
+resource running in that scope — that's Phase 6.
+
+## 6. Promotion (test / prod instances)
+
+Update-set promotion (`promote-ticket <id> TEST|PROD`) needs a
+`sys_update_set_source` on the **target** instance pointing at the source:
+
+1. On the target: **Retrieved Update Sets → Update Sources → New**.
+2. URL = the source instance URL; set credentials; **Test Connection**; Active.
+
+`promote.ts` detects its absence and blocks with instructions. Prod promotion
+also needs `changeRequestRef` set on the ticket.
+
 ## Prerequisites the smokes surface (not configured by the scripts)
 
 - **`com.glide.continuousdelivery`** — present on Australia PDIs. Needed for
@@ -72,5 +104,11 @@ The findings gate the Phase 4–6 design — see
   `sn_cicd/testsuite/run`. Grant the OAuth user `sn_cicd.sys_ci_automation`.
 - **`sys_update_set_source`** on `test` / `prod` instances, pointing at the
   source instance — required for update-set promotion (Phase 5 §5.3).
+- **ATF execution** — `sn_cicd/testsuite/run` needs `sn_atf.schedule.enabled =
+  true`. `setup-native-engine` tries to set it; on some instances a business
+  rule ("Check if scheduled suites allowed") blocks the Table API write and it
+  must be toggled in **ATF → Administration → Properties**. Until then the
+  pipeline's ATF step is **advisory** — it writes an `ATF_RESULTS` artifact
+  noting the gap and does not fail the ticket.
 - A **scheduled client test runner** (or container runner) if ATF tests use
   UI-interaction steps; server-side ATF runs without one.

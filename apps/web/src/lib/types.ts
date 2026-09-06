@@ -34,11 +34,26 @@ export interface TicketJson {
   category: string | null;
   createdAt: string;
   updatedAt: string;
+  // Native engine (NATIVE_ENGINE_BRIEF Phase 5). Null on Fluent-tier tickets.
+  executionTier: string | null;
+  releaseGate: string | null;
+  changeRequestRef: string | null;
+}
+
+export interface NativeDeploymentJson {
+  scope: string;
+  updateSetSysId: string;
+  updateSetName: string;
+  state: string;
+  appliedChanges: { changeId: string; table: string; sysId: string; operation: string }[];
+  remoteUpdateSetTest: string | null;
+  remoteUpdateSetProd: string | null;
 }
 
 export interface TicketDetailJson extends TicketJson {
   steps: StepJson[];
   artifacts: ArtifactJson[];
+  nativeDeployment: NativeDeploymentJson | null;
 }
 
 export interface TicketListItemJson {
