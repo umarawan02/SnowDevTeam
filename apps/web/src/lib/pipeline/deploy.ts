@@ -42,6 +42,14 @@ export async function deployTicket(ticketId: string, reviewerId?: string | null)
       error: `ticket is ${ticket.status}; only READY_FOR_REVIEW tickets can be deployed`,
     };
   }
+
+  // Native tier (NATIVE_ENGINE_BRIEF Phase 5): apply the reviewer-approved
+  // CHANGE_PLAN via the Table-API + update-set engine instead of Fluent.
+  if (ticket.executionTier?.startsWith("NATIVE")) {
+    const { deployNativeTicket } = await import("@/lib/pipeline/deploy-native");
+    return deployNativeTicket(ticketId, reviewerId);
+  }
+
   if (!ticket.project) {
     return { ok: false, ticketId, status: ticket.status, error: "ticket has no FluentProject assigned" };
   }

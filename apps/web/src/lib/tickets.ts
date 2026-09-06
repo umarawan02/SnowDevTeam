@@ -68,6 +68,7 @@ export function getTicketWithSteps(id: string) {
     include: {
       steps: { orderBy: { order: "asc" } },
       artifacts: { orderBy: { createdAt: "asc" } },
+      nativeDeployment: true,
     },
   });
 }

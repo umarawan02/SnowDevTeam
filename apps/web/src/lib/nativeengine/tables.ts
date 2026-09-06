@@ -148,8 +148,19 @@ export const ALLOWED: Record<string, TableSpec> = {
 
   // --- ATF ---------------------------------------------------------------
   sys_atf_test: { label: "ATF Test", requiredFields: ["name"], coalesce: ["name"] },
-  sys_atf_step: { label: "ATF Step", requiredFields: ["test", "step_config"], coalesce: ["test", "order"] },
+  sys_atf_step: {
+    label: "ATF Step",
+    requiredFields: ["test", "step_config"],
+    coalesce: ["test", "step_config"],
+    notes: "no stable natural key — `order` is auto-assigned and ATF may re-point `step_config`; a re-apply can create a duplicate step (rework loops only, harmless)",
+  },
   sys_atf_test_suite: { label: "ATF Test Suite", requiredFields: ["name"], coalesce: ["name"] },
+  sys_atf_test_suite_test: {
+    label: "ATF Test Suite → Test",
+    requiredFields: ["test_suite", "test"],
+    coalesce: ["test_suite", "test"],
+    notes: "links a test into a suite so it can be run headless via sn_cicd/testsuite/run",
+  },
 
   // --- Service Portal ---------------------------------------------------------
   sp_widget: {

@@ -21,7 +21,12 @@
     "smoke": "tsx scripts/smoke-all.mts",
     "smoke-cleanup": "tsx scripts/smoke-cleanup.mts",
     "validate-plan": "tsx scripts/validate-plan.mts",
-    "validate-plan-negatives": "tsx scripts/validate-plan-negatives.mts"
+    "validate-plan-negatives": "tsx scripts/validate-plan-negatives.mts",
+    "setup-native-engine": "tsx scripts/setup-native-engine.mts",
+    "seed-native-ticket": "tsx scripts/seed-native-ticket.mts",
+    "apply-plan": "tsx scripts/apply-plan.mts",
+    "promote-ticket": "tsx scripts/promote-ticket.mts",
+    "rollback-ticket": "tsx scripts/rollback-ticket.mts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.250",

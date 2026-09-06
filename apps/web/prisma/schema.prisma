@@ -68,8 +68,11 @@ model Ticket {
   tierRationale String?
   gitBranch     String?
   prUrl         String?
-  // null | DEV | TEST | PROD — wired up in Phase 4.
+  // null | DEV | TEST | PROD — the native engine's promotion state
+  // (NATIVE_ENGINE_BRIEF Phase 5). Set by apply.ts (DEV) and promote.ts.
   releaseGate String?
+  // Change-request number required before a PROD promote (brief §5.4).
+  changeRequestRef String?
 
   // Optional intake metadata (captured by the intake wizard; all nullable).
   requester   String?
@@ -88,6 +91,7 @@ model Ticket {
   artifacts Artifact[]
 
   intakeConversation IntakeConversation?
+  nativeDeployment   NativeDeployment?
 }
 
 // A conversational intake session: the requester talks to an assistant that
@@ -148,11 +152,44 @@ model Artifact {
   ticketId String
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
-  // REQUIREMENTS | DESIGN | TASK_LIST | CODE | TEST_PLAN | QA_REPORT | DEPLOY_LOG | DEPLOY_VERIFICATION
+  // See ARTIFACT_TYPE in src/lib/constants.ts for the full value set.
   type    String
   content String
 
   createdAt DateTime @default(now())
+}
+
+// --- NATIVE_ENGINE_BRIEF Phase 5: native-engine deployment record --------
+// One row per ticket that went through the native (Table-API + update-set)
+// engine rather than the Fluent tier. Holds the update set that IS the
+// rollback unit, the applied change→sys_id map, and the dev→test→prod state.
+model NativeDeployment {
+  id       String @id @default(cuid())
+  ticketId String @unique
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  // Resolved scope the writes landed in ("global" | "x_acme_hr") and its sys_id.
+  scope      String
+  scopeSysId String
+
+  updateSetSysId String
+  updateSetName  String
+
+  // APPLYING | APPLIED | APPLY_FAILED | PROMOTING | IN_TEST | IN_PROD | ROLLED_BACK
+  state String @default("APPLYING")
+
+  // [{ changeId, table, sysId, operation: "inserted" | "updated" }]
+  appliedChanges Json @default("[]")
+
+  // sn_cicd remote update set sys_ids captured during promotion.
+  remoteUpdateSetTest String?
+  remoteUpdateSetProd String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Editable AI-team member. One row per pipeline role, seeded from
@@ -218,8 +255,9 @@ model Instance {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  projects FluentProject[]
-  tickets  Ticket[]
+  projects          FluentProject[]
+  tickets           Ticket[]
+  nativeDeployments NativeDeployment[]
 
   @@unique([customerId, name])
 }

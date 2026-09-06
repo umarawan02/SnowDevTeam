@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getTicketWithSteps } from "@/lib/tickets";
 import { getPersonas } from "@/lib/agents/personas";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { canReview } from "@/lib/auth/rbac";
+import { canReview, hasRole } from "@/lib/auth/rbac";
 import { instanceLabel } from "@/lib/instance";
 import { TicketDetail } from "@/components/TicketDetail";
 import type { TicketDetailJson, PersonaJson } from "@/lib/types";
@@ -33,6 +33,7 @@ export default async function TicketPage({
       instanceLabel={instanceLabel()}
       personas={personaByRole}
       canReview={canReview(user)}
+      canAdmin={!!user && hasRole(user, "ADMIN")}
     />
   );
 }
