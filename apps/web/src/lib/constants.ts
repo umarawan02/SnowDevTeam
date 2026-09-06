@@ -10,6 +10,9 @@ export const TICKET_STATUS = {
   FAILED: "FAILED",
   DEPLOYED: "DEPLOYED",
   REJECTED: "REJECTED",
+  // NATIVE_ENGINE_BRIEF §6.3 route 4: the design needs a Flow Designer flow
+  // that no one will build automatically — the ticket waits for a human.
+  AWAITING_FLOW: "AWAITING_FLOW",
 } as const;
 export type TicketStatus = (typeof TICKET_STATUS)[keyof typeof TICKET_STATUS];
 

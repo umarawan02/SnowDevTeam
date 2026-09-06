@@ -44,9 +44,13 @@ const DERIVED_ARTIFACTS: ArtifactType[] = [
  * than silently falling back to a shared workspace.
  */
 function projectContextOf(ticket: {
+  executionTier: string | null;
   project: Parameters<typeof toProjectContext>[0] | null;
 }): PipelineContext["project"] {
   if (!ticket.project) {
+    // Native-tier tickets (NATIVE_ENGINE_BRIEF §6) have no Fluent project/repo —
+    // the pipeline runs the agent stages without the build machinery.
+    if (ticket.executionTier?.startsWith("NATIVE")) return undefined;
     throw new Error(
       "ticket has no FluentProject assigned — resolveProjectForTicket must run before runPipeline",
     );
@@ -75,6 +79,7 @@ async function resetFrom(ticketId: string, fromOrder: number): Promise<void> {
  * Developer with the diagnostics, up to MAX_BUILD_FIX rounds.
  */
 async function runBuildGate(ticketId: string, ctx: PipelineContext): Promise<{ ok: boolean; log: string }> {
+  if (!ctx.project) throw new Error("runBuildGate called for a ticket with no Fluent project");
   const repo = ctx.project.repoPath;
   const branch = ticketBranchName(ctx.ticketDir);
   const base = ctx.project.defaultBranch;
@@ -202,11 +207,13 @@ async function runStages(
         withTools: stage.withTools,
         webTools: stage.webTools,
         buildTool: stage.buildTool,
-        nowsdk: {
-          projectDir: ctx.project.repoPath,
-          ticketDir: ctx.ticketDir,
-          defaultBranch: ctx.project.defaultBranch,
-        },
+        nowsdk: ctx.project
+          ? {
+              projectDir: ctx.project.repoPath,
+              ticketDir: ctx.ticketDir,
+              defaultBranch: ctx.project.defaultBranch,
+            }
+          : undefined,
         model: agent.model,
       });
 
@@ -239,8 +246,9 @@ async function runStages(
       return { ok: false, ticketId, failedRole: stage.role, error: message };
     }
 
-    // Build gate: the Developer's code must compile before QA sees it.
-    if (stage.role === "DEVELOPER" && opts.gateBuild !== false && endOrder >= QA_ORDER) {
+    // Build gate: the Developer's code must compile before QA sees it. Native
+    // tickets have no Fluent build — the quality gate is Phase 7's validate_plan.
+    if (stage.role === "DEVELOPER" && ctx.project && opts.gateBuild !== false && endOrder >= QA_ORDER) {
       const gate = await runBuildGate(ticketId, ctx);
       if (!gate.ok) {
         await prisma.agentStep.updateMany({
@@ -324,8 +332,15 @@ export async function runPipeline(
     title: ticket.title,
     description: ticket.description,
     artifacts: {},
-    targetScope: project.kind,
+    targetScope: project?.kind ?? "global",
     project,
+    route: ticket.executionTier
+      ? {
+          tier: ticket.executionTier,
+          scope: ticket.routeScope ?? project?.scope ?? "global",
+          rationale: ticket.tierRationale ?? "",
+        }
+      : undefined,
     ticketDir: ticketDirName(ticketId, ticket.title),
   };
   const skipCompleted = canResume
@@ -401,8 +416,15 @@ export async function runRework(
     title: ticket.title,
     description: ticket.description,
     artifacts: {},
-    targetScope: project.kind,
+    targetScope: project?.kind ?? "global",
     project,
+    route: ticket.executionTier
+      ? {
+          tier: ticket.executionTier,
+          scope: ticket.routeScope ?? project?.scope ?? "global",
+          rationale: ticket.tierRationale ?? "",
+        }
+      : undefined,
     ticketDir: ticketDirName(ticketId, ticket.title),
     reworkNote: directive,
     reworkRound: round,

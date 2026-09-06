@@ -50,11 +50,17 @@ async function main() {
   let customer = await prisma.customer.findUnique({ where: { slug: DEMO_CUSTOMER_SLUG } });
   if (!customer) {
     customer = await prisma.customer.create({
-      data: { name: `Demo — ${INSTANCE_NAME}`, slug: DEMO_CUSTOMER_SLUG },
+      // allowFluentFlows on for the demo customer (NATIVE_ENGINE_BRIEF §6.3).
+      data: { name: `Demo — ${INSTANCE_NAME}`, slug: DEMO_CUSTOMER_SLUG, allowFluentFlows: true },
     });
     console.log(`✓ created Customer ${customer.id}`);
   } else {
-    console.log(`· Customer ${customer.id} already exists`);
+    if (!customer.allowFluentFlows) {
+      customer = await prisma.customer.update({ where: { id: customer.id }, data: { allowFluentFlows: true } });
+      console.log(`· Customer ${customer.id} — set allowFluentFlows=true`);
+    } else {
+      console.log(`· Customer ${customer.id} already exists`);
+    }
   }
 
   // 2. Instance
