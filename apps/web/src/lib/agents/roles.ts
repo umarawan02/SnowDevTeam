@@ -17,14 +17,21 @@ export interface PipelineContext {
   description: string;
   /** Prior-stage artifacts, keyed by ArtifactType, in the order they were produced. */
   artifacts: Partial<Record<ArtifactType, string>>;
-  /** The ticket's resolved FluentProject (REFACTOR_BRIEF Phase 1). */
-  project: {
+  /** The ticket's resolved FluentProject (REFACTOR_BRIEF Phase 1). Absent for
+   *  native-tier tickets, which have no Fluent project or repo. */
+  project?: {
     id: string;
     repoPath: string;
     scope: string;
     scopeId: string;
     kind: TargetScope;
     defaultBranch: string;
+  };
+  /** The routing decision (NATIVE_ENGINE_BRIEF §6) — tier, scope, rationale. */
+  route?: {
+    tier: string;
+    scope: string;
+    rationale: string;
   };
   /** This ticket's subdirectory inside the project — `t-<short-id>-<slug>`
    *  (REFACTOR_BRIEF Phase 2). All its generated code lives under
@@ -78,11 +85,13 @@ const request = (ctx: PipelineContext) =>
 
 /** The one authoring rule that differs by target scope — prepended to every stage. */
 function scopeSection(ctx: PipelineContext): string {
-  if ((ctx.targetScope ?? DEFAULT_TARGET_SCOPE) === "scoped") {
+  const scope = ctx.route?.scope || ctx.project?.scope || (ctx.targetScope === "scoped" ? "scoped" : "global");
+  const isScoped = scope !== "global" && scope !== "";
+  if (isScoped) {
     return section(
       "Target scope — SCOPED",
-      "Build inside the scoped application `x_1460392_delivery` (\"AI Delivery App\"). " +
-        "Every net-new table/field carries the app prefix. A scoped app **cannot** own a " +
+      `Build inside the scoped application \`${scope}\`. ` +
+        `Every net-new table/field carries the \`${scope}_\` prefix. A scoped app **cannot** own a ` +
         "UI policy, business rule, client script, or ACL on an OOB table (`sysapproval_approver`, " +
         "`sc_task`, `sc_req_item`, …) — put that logic in a Flow instead.",
     );
@@ -90,7 +99,7 @@ function scopeSection(ctx: PipelineContext): string {
   return section(
     "Target scope — GLOBAL",
     "Build plain platform-wide records. Do **not** prefix `Now.ID` keys, table names, or " +
-      "field names with `x_1460392_delivery_` — use short kebab-case ids (e.g. `laptop-request`). " +
+      "field names with an application prefix — use short kebab-case ids (e.g. `laptop-request`). " +
       "Avoid custom tables; if one is truly unavoidable, use a `u_` prefix. You may reference OOB " +
       "records directly and, where the design calls for it, attach UI policies / business rules / " +
       "ACLs to OOB tables — the scoped-app cross-scope restrictions do not apply.",

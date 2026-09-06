@@ -46,9 +46,13 @@ export interface RunAgentResult {
 export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
   const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool, nowsdk } = input;
   const model = input.model ?? config.ANTHROPIC_MODEL;
-  const needsNowsdk = withTools || webTools || buildTool;
-  if (needsNowsdk && !nowsdk) {
-    throw new Error("runAgent: `nowsdk` opts are required when withTools/webTools/buildTool is set");
+  // now-sdk MCP tools (explain / query / build) need a Fluent project on disk.
+  // Native-tier tickets (NATIVE_ENGINE_BRIEF §6) have none — the caller passes
+  // no `nowsdk`, so those tools are unavailable this run. WebSearch / WebFetch
+  // do not need a project.
+  const needsNowsdk = (withTools || buildTool) && !!nowsdk;
+  if ((withTools || buildTool) && !nowsdk) {
+    console.warn("[runAgent] withTools/buildTool set without `nowsdk` — running without the now-sdk MCP tools");
   }
 
   const toolCalls: ToolCall[] = [];

@@ -14,6 +14,7 @@ export const TICKET_STATUS_META: Record<TicketStatus, { label: string; tone: Ton
   FAILED: { label: "Failed", tone: "crit" },
   DEPLOYED: { label: "Deployed", tone: "ok" },
   REJECTED: { label: "Rejected", tone: "crit" },
+  AWAITING_FLOW: { label: "Awaiting flow", tone: "accent" },
 };
 
 export const STEP_STATUS_META: Record<StepStatus, { label: string; tone: Tone }> = {
@@ -101,9 +102,9 @@ export function roleMeta(role: string) {
 
 /** Human label for a ticket's target scope. */
 export function scopeLabel(scope: string | null | undefined): { label: string; full: string } {
-  return scope === "scoped"
-    ? { label: "Scoped", full: "Scoped app · x_1460392_delivery" }
-    : { label: "Global", full: "Global scope" };
+  if (!scope || scope === "global") return { label: "Global", full: "Global scope" };
+  if (scope === "scoped") return { label: "Scoped", full: "Scoped app" };
+  return { label: "Scoped", full: `Scoped app · ${scope}` };
 }
 
 export function relativeTime(iso: string | Date): string {

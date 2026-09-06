@@ -22,6 +22,7 @@
     "smoke-cleanup": "tsx scripts/smoke-cleanup.mts",
     "validate-plan": "tsx scripts/validate-plan.mts",
     "validate-plan-negatives": "tsx scripts/validate-plan-negatives.mts",
+    "route-cases": "tsx scripts/route-cases.mts",
     "setup-native-engine": "tsx scripts/setup-native-engine.mts",
     "seed-native-ticket": "tsx scripts/seed-native-ticket.mts",
     "apply-plan": "tsx scripts/apply-plan.mts",

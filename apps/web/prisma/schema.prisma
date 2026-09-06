@@ -66,6 +66,9 @@ model Ticket {
   // becomes a real decision in tier.ts (Phase 3).
   executionTier String?
   tierRationale String?
+  // The resolved scope the router chose ("global" | "x_acme_hr"); needed by the
+  // pipeline/apply for NATIVE_SCOPED tickets that have no FluentProject.
+  routeScope    String?
   gitBranch     String?
   prUrl         String?
   // null | DEV | TEST | PROD — the native engine's promotion state
@@ -221,6 +224,10 @@ model Customer {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  // NATIVE_ENGINE_BRIEF §6.3: allow the router to send net-new Flow Designer
+  // work to the Fluent flow tier for this customer. Off by default; the human
+  // AWAITING_FLOW gate is used instead.
+  allowFluentFlows Boolean @default(false)
   createdAt DateTime @default(now())
 
   instances Instance[]

@@ -91,9 +91,7 @@ export function BuiltFlowDiagram({ code, targetScope }: { code: string; targetSc
       <aside className="bf-side">
         <div className="bf-block">
           <h4>Target scope</h4>
-          <p className="bf-name-row">
-            {targetScope === "scoped" ? "Scoped app · x_1460392_delivery" : "Global"}
-          </p>
+          <p className="bf-name-row">{targetScope === "scoped" ? "Scoped app" : "Global"}</p>
         </div>
         {parsed.catalogItemName && (
           <div className="bf-block">
