@@ -1,7 +1,6 @@
 import {
   AGENT_ROLES,
   ARTIFACT_TYPE,
-  DEFAULT_TARGET_SCOPE,
   type AgentRole,
   type ArtifactType,
   type TargetScope,

@@ -19,6 +19,9 @@ export function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Deliberate: localStorage isn't readable during SSR, so the stored choice
+    // is applied after mount (the pre-paint themeBootScript prevents a flash).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setChoice(read());
     setMounted(true);
   }, []);

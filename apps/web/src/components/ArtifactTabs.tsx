@@ -19,6 +19,10 @@ export function ArtifactTabs({
   const userPicked = useRef(false);
   const prevCount = useRef(present.length);
 
+  /* eslint-disable react-hooks/set-state-in-effect --
+     Syncing the selected tab to the incoming `present` list (new artifact
+     arrived, or the current tab disappeared) is the intent — not a
+     render-phase computation. */
   // While a run is live, follow the newest artifact — unless the user has
   // manually chosen a tab.
   useEffect(() => {
@@ -32,6 +36,7 @@ export function ArtifactTabs({
       setSelected(present[present.length - 1] ?? null);
     }
   }, [present, selected]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (present.length === 0) {
     return (

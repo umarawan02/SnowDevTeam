@@ -134,7 +134,8 @@ export function resolveScripts(plan: ChangePlan, dir: string): ChangePlan {
       const field = spec?.scriptField ?? "script";
       const body = readScriptFile(dir, c.script.file);
       if (body == null) throw new Error(`change "${c.id}": script.file "${c.script.file}" not found`);
-      const { script: _drop, ...rest } = c;
+      const rest = { ...c };
+      delete (rest as { script?: unknown }).script;
       return { ...rest, fields: { ...c.fields, [field]: body } };
     }),
   };

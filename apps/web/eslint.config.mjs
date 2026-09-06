@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // ServiceNow server-side scripts — authored against platform globals
+    // (gs, GlideRecord, Class); linted by src/lib/nativeengine/lint.ts, not eslint.
+    "src/lib/nativeengine/serverscript/**",
   ]),
 ]);
 
