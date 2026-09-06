@@ -27,7 +27,8 @@ function read(name: string): string {
   return fs.readFileSync(path.join(PROMPT_DIR, name), "utf8").trim();
 }
 
-const GROUNDING = read("grounding.md");
+const GROUNDING_FLUENT = read("grounding.md");
+const GROUNDING_NATIVE = read("grounding-native.md");
 
 const ROLE_PROMPT_FILE: Record<AgentRole, string> = {
   BA: "business-analyst.md",
@@ -37,16 +38,32 @@ const ROLE_PROMPT_FILE: Record<AgentRole, string> = {
   QA: "qa.md",
 };
 
-// The Architect / Senior Dev / Developer get the curated now-sdk grounding
-// prepended; they also have the live `explain`/`query` tools for specifics.
+/** The Developer's native-tier prompt replaces developer.md entirely. */
+const DEVELOPER_NATIVE = read("developer-native.md");
+
+// Architect / Senior Dev / Developer get a grounding appendix; the flavour
+// depends on the ticket's tier (native vs Fluent).
 const ROLES_WITH_GROUNDING: ReadonlySet<AgentRole> = new Set(["ARCHITECT", "SENIOR_DEV", "DEVELOPER"]);
 
-export const SYSTEM_PROMPTS: Record<AgentRole, string> = Object.fromEntries(
-  (Object.keys(ROLE_PROMPT_FILE) as AgentRole[]).map((role) => {
-    const rolePrompt = read(ROLE_PROMPT_FILE[role]);
-    const full = ROLES_WITH_GROUNDING.has(role)
-      ? `${rolePrompt}\n\n---\n\n# Appendix: ${GROUNDING}`
-      : rolePrompt;
-    return [role, full];
-  }),
+function compose(role: AgentRole, native: boolean): string {
+  const rolePrompt = role === "DEVELOPER" && native ? DEVELOPER_NATIVE : read(ROLE_PROMPT_FILE[role]);
+  if (!ROLES_WITH_GROUNDING.has(role)) return rolePrompt;
+  const grounding = native ? GROUNDING_NATIVE : GROUNDING_FLUENT;
+  return `${rolePrompt}\n\n---\n\n# Appendix: ${grounding}`;
+}
+
+const FLUENT_PROMPTS = Object.fromEntries(
+  (Object.keys(ROLE_PROMPT_FILE) as AgentRole[]).map((r) => [r, compose(r, false)]),
 ) as Record<AgentRole, string>;
+
+const NATIVE_PROMPTS = Object.fromEntries(
+  (Object.keys(ROLE_PROMPT_FILE) as AgentRole[]).map((r) => [r, compose(r, true)]),
+) as Record<AgentRole, string>;
+
+/** The Fluent-tier prompt set (kept as the default export name for callers). */
+export const SYSTEM_PROMPTS: Record<AgentRole, string> = FLUENT_PROMPTS;
+
+/** Tier-aware prompt lookup (NATIVE_ENGINE_BRIEF §7.3). */
+export function systemPromptFor(role: AgentRole, opts: { native: boolean }): string {
+  return opts.native ? NATIVE_PROMPTS[role] : FLUENT_PROMPTS[role];
+}

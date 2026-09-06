@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { prisma } from "@/lib/db";
 import { STEP_STATUS, TICKET_STATUS, ARTIFACT_TYPE, type ArtifactType } from "@/lib/constants";
 import { config } from "@/lib/config";
@@ -8,6 +9,7 @@ import {
   parseQaVerdict,
   parseReworkFrom,
   parseGeneratedFiles,
+  parseNativePlan,
   ticketDirName,
   ticketBranchName,
   type ReworkFrom,
@@ -15,6 +17,14 @@ import {
 import { buildProject, relocateIntoTicketDir, withProjectLock } from "@/lib/nowsdk/workspace";
 import { commitAll, discardTree, resetTicketBranch } from "@/lib/git/repo";
 import { toProjectContext } from "@/lib/projects/resolve";
+import { isNativeTier, isRouteTier, ROUTE_RANK, type RouteTier } from "@/lib/pipeline/route";
+import type { Instance } from "@prisma/client";
+import { buildProjectContext } from "@/lib/agents/project-context";
+import { nativeTicketDir, writeScriptFiles } from "@/lib/nativeengine/scripts";
+import { runValidation } from "@/lib/nativeengine/gate";
+import { SnowClient } from "@/lib/servicenow/client";
+import { dryRunDiff } from "@/lib/nativeengine/diff";
+import { validatePlan } from "@/lib/nativeengine/plan";
 
 export interface PipelineResult {
   ok: boolean;
@@ -27,6 +37,8 @@ export interface PipelineResult {
 const MAX_AUTO_REWORK = 2;
 /** Times the build gate re-runs the Developer to fix compile errors before failing. */
 const MAX_BUILD_FIX = 2;
+/** Times the native plan gate re-runs the Developer to fix `validate_plan` errors. */
+const MAX_PLAN_FIX = 2;
 
 const DEV_ORDER = ROLE_CONFIG.DEVELOPER.order;
 const QA_ORDER = ROLE_CONFIG.QA.order;
@@ -60,6 +72,35 @@ function projectContextOf(ticket: {
 
 function artifactTypesFrom(fromOrder: number): ArtifactType[] {
   return PIPELINE.filter((s) => s.order >= fromOrder).map((s) => s.artifactType);
+}
+
+interface TicketForCtx {
+  id: string;
+  title: string;
+  executionTier: string | null;
+  tierRationale: string | null;
+  routeScope: string | null;
+  gitBranch: string | null;
+  customer: { name: string; slug: string } | null;
+  instance: Instance | null;
+}
+
+/**
+ * The native-tier slice of the pipeline context (NATIVE_ENGINE_BRIEF §7): the
+ * native prompt set + MCP server, the `{{PROJECT_CONTEXT}}` block, and the
+ * ticket's native scripts dir. Just `{ projectContext }` for a Fluent ticket.
+ */
+function nativeCtx(ticket: TicketForCtx): Partial<PipelineContext> {
+  const projectContext = buildProjectContext(ticket);
+  if (!isNativeTier(ticket.executionTier)) return { projectContext };
+  const slug = ticket.customer?.slug ?? "demo";
+  const ticketDir = ticket.gitBranch?.replace(/^ticket\//, "") || ticketDirName(ticket.id, ticket.title);
+  return {
+    native: true,
+    projectContext,
+    instance: ticket.instance ?? undefined,
+    nativeScriptsDir: nativeTicketDir(slug, ticketDir),
+  };
 }
 
 /** Delete the steps + artifacts for `fromOrder..QA` (plus any deploy artifacts). */
@@ -149,6 +190,133 @@ async function upsertArtifact(ticketId: string, type: string, content: string): 
 }
 
 /**
+ * Native quality gate (NATIVE_ENGINE_BRIEF §7) — replaces `runBuildGate` for the
+ * native tier. Parse the Developer's output into a change plan + script files,
+ * run the same read-only validation as the `validate_plan` tool, and on a clean
+ * pass write the `CHANGE_PLAN` + `CHANGE_PLAN_DIFF` artifacts. On failure,
+ * re-run the Developer with the findings, up to MAX_PLAN_FIX rounds.
+ */
+async function runPlanGate(ticketId: string, ctx: PipelineContext): Promise<{ ok: boolean; log: string }> {
+  const scriptsDir = ctx.nativeScriptsDir;
+  if (!scriptsDir) return { ok: false, log: "no native scripts dir on the context" };
+
+  for (let attempt = 0; attempt <= MAX_PLAN_FIX; attempt++) {
+    const parsed = parseNativePlan(ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "");
+    let ok = false;
+    let diagnostics: string;
+    let log: string;
+
+    if (!parsed.planJson) {
+      diagnostics = `No CHANGE_PLAN found.\n${parsed.warnings.join("\n")}\n\nEmit exactly one \`\`\`json block containing { "scope", "updateSetName", "changes": [...] }.`;
+      log = `# Build (native)\n\n✗ ${diagnostics}`;
+    } else {
+      fs.mkdirSync(scriptsDir, { recursive: true });
+      try {
+        if (parsed.scripts.length) writeScriptFiles(scriptsDir, parsed.scripts);
+      } catch (e) {
+        // fall through — the validator will report the missing file
+        log = "";
+        void e;
+      }
+
+      let planInput: unknown;
+      try {
+        planInput = JSON.parse(parsed.planJson);
+      } catch (e) {
+        planInput = undefined;
+        void e;
+      }
+      const scope = (planInput as { scope?: string })?.scope;
+      const gate = await runValidation({
+        planInput,
+        scriptsDir,
+        instance: ctx.instance ?? null,
+        scopeKind: scope && scope !== "global" ? "scoped" : "global",
+      });
+      ok = gate.ok;
+      diagnostics = gate.errors.join("\n");
+      log =
+        `# Build (native) — ${ok ? "PASSED" : `fix attempt ${attempt + 1} of ${MAX_PLAN_FIX + 1}`}\n\n` +
+        `${gate.summary}\n` +
+        (gate.errors.length ? `\n## Errors\n${gate.errors.map((e) => `- ${e}`).join("\n")}\n` : "") +
+        (gate.warnings.length ? `\n## Warnings\n${gate.warnings.map((w) => `- ${w}`).join("\n")}\n` : "");
+
+      if (ok) {
+        await upsertArtifact(ticketId, ARTIFACT_TYPE.CHANGE_PLAN, parsed.planJson);
+        ctx.artifacts[ARTIFACT_TYPE.CHANGE_PLAN as ArtifactType] = parsed.planJson;
+        if (gate.diffMarkdown) {
+          await upsertArtifact(ticketId, ARTIFACT_TYPE.CHANGE_PLAN_DIFF, gate.diffMarkdown);
+        } else if (ctx.instance) {
+          const v = validatePlan(planInput);
+          if (v.plan) {
+            const client = SnowClient.forInstance(ctx.instance);
+            const diff = await dryRunDiff(v.plan, client);
+            await upsertArtifact(ticketId, ARTIFACT_TYPE.CHANGE_PLAN_DIFF, diff.markdown);
+          }
+        }
+      }
+    }
+
+    await upsertArtifact(ticketId, ARTIFACT_TYPE.BUILD_LOG, log);
+    if (ok) return { ok: true, log };
+    if (attempt === MAX_PLAN_FIX) return { ok: false, log };
+
+    // Re-run the Developer against the findings + its own failing plan.
+    ctx.planErrors = diagnostics;
+    ctx.failingPlan = ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "";
+    await prisma.agentStep.deleteMany({ where: { ticketId, role: "DEVELOPER" } });
+    await prisma.artifact.deleteMany({ where: { ticketId, type: ARTIFACT_TYPE.CODE } });
+    delete ctx.artifacts[ARTIFACT_TYPE.CODE];
+    const res = await runStages(ticketId, ctx, DEV_ORDER, DEV_ORDER, new Set(), [], { gateBuild: false });
+    ctx.planErrors = undefined;
+    ctx.failingPlan = undefined;
+    if (!res.ok) return { ok: false, log: res.error ?? "developer re-run failed" };
+  }
+  return { ok: false, log: "plan gate exhausted" };
+}
+
+/**
+ * Apply a `ROUTE_OVERRIDE: <TIER>` line from the Architect, but only if it is
+ * *more conservative* than the current route (§6 / §7.3). A loosening override
+ * is logged and ignored. NOT_SUPPORTED and a human flow route stop the pipeline.
+ */
+async function applyRouteOverride(
+  ticketId: string,
+  ctx: PipelineContext,
+  architectText: string,
+): Promise<{ stop?: PipelineResult } | null> {
+  const m = architectText.match(/ROUTE_OVERRIDE:\s*([A-Z_]+)/);
+  const want = m?.[1];
+  if (!want || want === "none" || !isRouteTier(want)) return null;
+
+  const current = (ctx.route?.tier ?? "NATIVE_GLOBAL") as RouteTier;
+  if (!isRouteTier(current) || ROUTE_RANK[want] <= ROUTE_RANK[current]) {
+    console.warn(`[route] Architect ROUTE_OVERRIDE ${want} is not more conservative than ${current} — ignored`);
+    return null;
+  }
+
+  const rationale = `Route tightened by the Architect: ${current} → ${want}. ${architectText.slice(0, 800)}`;
+  await prisma.ticket.update({
+    where: { id: ticketId },
+    data: { executionTier: want, tierRationale: `Architect override: ${current} → ${want}` },
+  });
+  ctx.route = { ...(ctx.route ?? { scope: "", rationale: "" }), tier: want };
+  ctx.native = isNativeTier(want);
+
+  if (want === "NOT_SUPPORTED") {
+    await upsertArtifact(ticketId, ARTIFACT_TYPE.DESIGN, `# Route: NOT_SUPPORTED\n\n${rationale}`);
+    await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.FAILED } });
+    return { stop: { ok: false, ticketId, error: `routed NOT_SUPPORTED by the Architect` } };
+  }
+  if (want === "FLUENT_FLOW" || want === "FLUENT_SCOPED_APP") {
+    await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.AWAITING_FLOW } });
+    await upsertArtifact(ticketId, ARTIFACT_TYPE.DESIGN, `# Route: ${want} — awaiting a human\n\n${rationale}`);
+    return { stop: { ok: true, ticketId } };
+  }
+  return null;
+}
+
+/**
  * Run pipeline stages `startOrder..endOrder` (inclusive), writing a step +
  * artifact per stage. After the Developer stage (unless `opts.gateBuild` is
  * false) the build gate runs. On a stage or gate failure: mark the step + ticket
@@ -174,7 +342,10 @@ async function runStages(
       }
     }
 
-    const agent = await resolveAgent(stage.role);
+    const agent = await resolveAgent(stage.role, {
+      native: !!ctx.native,
+      projectContext: ctx.projectContext,
+    });
     const modelUsed = agent.model ?? config.ANTHROPIC_MODEL;
 
     const step = await prisma.agentStep.upsert({
@@ -207,13 +378,14 @@ async function runStages(
         withTools: stage.withTools,
         webTools: stage.webTools,
         buildTool: stage.buildTool,
-        nowsdk: ctx.project
-          ? {
-              projectDir: ctx.project.repoPath,
-              ticketDir: ctx.ticketDir,
-              defaultBranch: ctx.project.defaultBranch,
-            }
-          : undefined,
+        nowsdk:
+          !ctx.native && ctx.project
+            ? { projectDir: ctx.project.repoPath, ticketDir: ctx.ticketDir, defaultBranch: ctx.project.defaultBranch }
+            : undefined,
+        native:
+          ctx.native && ctx.nativeScriptsDir
+            ? { instance: ctx.instance ?? null, scriptsDir: ctx.nativeScriptsDir }
+            : undefined,
         model: agent.model,
       });
 
@@ -233,6 +405,12 @@ async function runStages(
         data: { ticketId, type: stage.artifactType, content: result.text },
       });
       ctx.artifacts[stage.artifactType as ArtifactType] = result.text;
+
+      // The Architect may argue for a more conservative route (§6 / §7.3).
+      if (stage.role === "ARCHITECT" && ctx.native) {
+        const applied = await applyRouteOverride(ticketId, ctx, result.text);
+        if (applied?.stop) return applied.stop;
+      }
     } catch (stageErr) {
       const message = stageErr instanceof Error ? stageErr.message : String(stageErr);
       await prisma.agentStep.update({
@@ -246,21 +424,38 @@ async function runStages(
       return { ok: false, ticketId, failedRole: stage.role, error: message };
     }
 
-    // Build gate: the Developer's code must compile before QA sees it. Native
-    // tickets have no Fluent build — the quality gate is Phase 7's validate_plan.
-    if (stage.role === "DEVELOPER" && ctx.project && opts.gateBuild !== false && endOrder >= QA_ORDER) {
-      const gate = await runBuildGate(ticketId, ctx);
-      if (!gate.ok) {
-        await prisma.agentStep.updateMany({
-          where: { ticketId, role: "DEVELOPER" },
-          data: {
-            status: STEP_STATUS.FAILED,
-            error: `Code did not compile after ${MAX_BUILD_FIX} fix attempts. See the Build tab.`,
-            completedAt: new Date(),
-          },
-        });
-        await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.FAILED } });
-        return { ok: false, ticketId, failedRole: "DEVELOPER", error: "build gate failed" };
+    // Quality gate after the Developer, before QA.
+    if (stage.role === "DEVELOPER" && opts.gateBuild !== false && endOrder >= QA_ORDER) {
+      if (ctx.native) {
+        // Native: parse + validate the change plan (validate_plan, read-only).
+        const gate = await runPlanGate(ticketId, ctx);
+        if (!gate.ok) {
+          await prisma.agentStep.updateMany({
+            where: { ticketId, role: "DEVELOPER" },
+            data: {
+              status: STEP_STATUS.FAILED,
+              error: `The change plan did not validate after ${MAX_PLAN_FIX} fix attempts. See the Change Plan / Build tab.`,
+              completedAt: new Date(),
+            },
+          });
+          await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.FAILED } });
+          return { ok: false, ticketId, failedRole: "DEVELOPER", error: "plan gate failed" };
+        }
+      } else if (ctx.project) {
+        // Fluent: the Developer's code must compile before QA sees it.
+        const gate = await runBuildGate(ticketId, ctx);
+        if (!gate.ok) {
+          await prisma.agentStep.updateMany({
+            where: { ticketId, role: "DEVELOPER" },
+            data: {
+              status: STEP_STATUS.FAILED,
+              error: `Code did not compile after ${MAX_BUILD_FIX} fix attempts. See the Build tab.`,
+              completedAt: new Date(),
+            },
+          });
+          await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.FAILED } });
+          return { ok: false, ticketId, failedRole: "DEVELOPER", error: "build gate failed" };
+        }
       }
     }
   }
@@ -310,7 +505,7 @@ export async function runPipeline(
 ): Promise<PipelineResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    include: { steps: true, artifacts: true, project: true },
+    include: { steps: true, artifacts: true, project: true, instance: true, customer: true },
   });
   if (!ticket) return { ok: false, ticketId, error: "ticket not found" };
 
@@ -341,6 +536,7 @@ export async function runPipeline(
           rationale: ticket.tierRationale ?? "",
         }
       : undefined,
+    ...nativeCtx(ticket),
     ticketDir: ticketDirName(ticketId, ticket.title),
   };
   const skipCompleted = canResume
@@ -379,7 +575,7 @@ export async function runRework(
 ): Promise<PipelineResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    include: { artifacts: { orderBy: { createdAt: "asc" } }, project: true },
+    include: { artifacts: { orderBy: { createdAt: "asc" } }, project: true, instance: true, customer: true },
   });
   if (!ticket) return { ok: false, ticketId, error: "ticket not found" };
 
@@ -425,6 +621,7 @@ export async function runRework(
           rationale: ticket.tierRationale ?? "",
         }
       : undefined,
+    ...nativeCtx(ticket),
     ticketDir: ticketDirName(ticketId, ticket.title),
     reworkNote: directive,
     reworkRound: round,

@@ -50,14 +50,20 @@ MAINTENANCE
 ## Output format (Markdown)
 
 1. `# Requirements: <service name>`
-2. `## Summary` — 2–3 sentences. State the **target scope** (global or scoped)
-   from the request's "Target scope" line.
+2. `## Summary` — 2–3 sentences. (Do **not** state a target scope — the delivery
+   team routes the work automatically.)
 3. `## Requirements` — the adapted template above, fully filled in.
-4. `## Acceptance Criteria` — a numbered list. Each item must be **independently
+4. `## Artefacts` — a fenced list of every ServiceNow record the request implies,
+   one per line as `- <kind>: <name> — <purpose>`, where `<kind>` is one of
+   `catalog_item`, `record_producer`, `variable`, `ui_policy`, `client_script`,
+   `business_rule`, `script_include`, `acl`, `notification`, `flow`, `sla`,
+   `atf_test`. Name each thing concretely (`- catalog_item: Reset MFA — the
+   request form`). This drives routing and the build — be complete, not vague.
+5. `## Acceptance Criteria` — a numbered list. Each item must be **independently
    testable** and written so QA can turn it into a test case (Given / When / Then
    style is good). Cover the happy path, the approval path (approved *and*
    rejected), input validation, and the fulfillment work item.
-5. `## Open Questions / Ambiguities` — a numbered list of everything the request
+6. `## Open Questions / Ambiguities` — a numbered list of everything the request
    left unclear. **Flag ambiguity here — never silently resolve it.** If you had
    to assume something to proceed, state the assumption and why. If there are
    genuinely none, write "None."

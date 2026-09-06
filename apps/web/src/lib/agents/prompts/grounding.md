@@ -21,13 +21,16 @@ memory when `explain` can give you the real syntax.
 
 ## Target scope
 
-Every ticket carries a **target scope**, given to you in the "Target scope" line
-of the request. It decides how you name and place records. The pipeline writes
-the matching `now.config.json` before it builds — you do not touch that file.
+The **Project context** block above states this ticket's scope — `global` or an
+application scope like `x_acme_hr`. It decides how you name and place records.
+The pipeline writes the matching `now.config.json` before it builds — you do not
+touch that file. Below, `<app-scope>` means the exact scope string from the
+Project context.
 
 **GLOBAL** (the default, most catalog items):
 - No scope prefix. `Now.ID` keys are short kebab-case (`laptop-request`,
-  `laptop-approval-flow`). Do **not** write `x_1460392_delivery_...` anywhere.
+  `laptop-approval-flow`). Do **not** prefix keys, tables, or fields with an
+  application scope.
 - Prefer net-new global records: `CatalogItem`, `CatalogCategory`, `Flow`,
   `EmailNotification`, catalog variables, `Role`. Avoid custom tables entirely
   for the MVP; if one is genuinely unavoidable, name it `u_<name>`.
@@ -36,9 +39,8 @@ the matching `now.config.json` before it builds — you do not touch that file.
   design — the scoped-app boundary rule below does **not** apply. A flow is
   still often cleaner, but it is no longer forced.
 
-**SCOPED** (only when the ticket says so): the app is `x_1460392_delivery` —
-every custom table/field is `x_1460392_delivery_<something>`, and the
-"Scoped-app boundaries" rule below is in force.
+**SCOPED** (only when the Project context says so): every custom table/field is
+`<app-scope>_<something>`, and the "Scoped-app boundaries" rule below is in force.
 
 ## Fluent basics
 
@@ -48,8 +50,8 @@ them at module top level:
 ```typescript
 import { Table, StringColumn, BooleanColumn, Reference } from '@servicenow/sdk/core'
 
-export const x_1460392_delivery_request = Table({
-  name: 'x_1460392_delivery_request',
+export const x_acme_request = Table({
+  name: 'x_acme_request',
   schema: {
     short_description: StringColumn({ label: 'Short description', maxLength: 160, mandatory: true }),
     approved: BooleanColumn({ label: 'Approved' }),
@@ -93,7 +95,7 @@ code. Violating any of these fails `now-sdk build`, which blocks deploy.
 
 - `CatalogUiPolicy` / `UiPolicy` / `BusinessRule` / `Acl` on an **OOB table**
   (`sysapproval_approver`, `sc_task`, `sc_req_item`, `task`, …) fails
-  `TS11: 'table' property should start with scope prefix 'x_1460392_delivery_'`.
+  `TS11: 'table' property should start with scope prefix '<app-scope>_'`.
   A scoped app cannot own metadata on tables it didn't create.
 - To act on OOB records: use a **Flow** (flows run cross-scope), a
   **record-producer / catalog-task action** inside the flow, or an

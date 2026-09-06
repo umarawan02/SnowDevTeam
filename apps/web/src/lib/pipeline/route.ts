@@ -314,3 +314,19 @@ function escapeRe(s: string): string {
 export function isNativeTier(tier: string | null | undefined): boolean {
   return !!tier && tier.startsWith("NATIVE");
 }
+
+/**
+ * Conservatism order (NATIVE_ENGINE_BRIEF §6). The Architect's `ROUTE_OVERRIDE`
+ * (Phase 7) may only move the tier to a *higher* rank, never lower.
+ */
+export const ROUTE_RANK: Record<RouteTier, number> = {
+  NATIVE_GLOBAL: 0,
+  NATIVE_SCOPED: 1,
+  FLUENT_FLOW: 2,
+  FLUENT_SCOPED_APP: 3,
+  NOT_SUPPORTED: 4,
+};
+
+export function isRouteTier(v: string): v is RouteTier {
+  return v in ROUTE_RANK;
+}

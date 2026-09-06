@@ -1,3 +1,4 @@
+import type { Instance } from "@prisma/client";
 import {
   AGENT_ROLES,
   ARTIFACT_TYPE,
@@ -32,6 +33,19 @@ export interface PipelineContext {
     scope: string;
     rationale: string;
   };
+  /** Native tier (NATIVE_ENGINE_BRIEF §7): the agents use the native prompt set
+   *  + the native MCP server, and the plan gate replaces the build gate. */
+  native?: boolean;
+  /** The `{{PROJECT_CONTEXT}}` block prepended to every grounded prompt. */
+  projectContext?: string;
+  /** The ticket's Instance row — for the native MCP `query` / `validate_plan`. */
+  instance?: Instance;
+  /** Absolute path to the ticket's native dir (holds the Developer's *.js). */
+  nativeScriptsDir?: string;
+  /** Set by the plan gate: `validate_plan` findings + the failing plan, so the
+   *  native Developer re-runs cheaply. */
+  planErrors?: string;
+  failingPlan?: string;
   /** This ticket's subdirectory inside the project — `t-<short-id>-<slug>`
    *  (REFACTOR_BRIEF Phase 2). All its generated code lives under
    *  `src/fluent/<ticketDir>/` and `src/server/<ticketDir>/`. */
@@ -122,6 +136,18 @@ function reworkSection(ctx: PipelineContext): string {
  * has a compile error. Send just that code + the errors — not the design and
  * task list again.
  */
+/** A plan-fix round for the native Developer: send the failing plan + the
+ *  `validate_plan` findings, not the design and task list again. */
+function planFixPrompt(ctx: PipelineContext): string {
+  return (
+    request(ctx) +
+    section("Your current change plan — validate_plan REJECTED it", ctx.failingPlan ?? "(missing)") +
+    section("validate_plan errors — fix ONLY these", "```text\n" + (ctx.planErrors ?? "") + "\n```") +
+    "\nRe-emit the corrected CHANGE_PLAN JSON block and every script FILE block. " +
+    "Call `validate_plan` until it is clean before you answer."
+  );
+}
+
 function buildFixPrompt(ctx: PipelineContext): string {
   return (
     request(ctx) +
@@ -204,15 +230,21 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
     buildTool: true,
     maxTurns: 55,
     systemPrompt: SYSTEM_PROMPTS.DEVELOPER,
-    buildUserPrompt: (ctx) =>
-      ctx.buildErrors && ctx.failingCode
-        ? buildFixPrompt(ctx)
-        : `${request(ctx)}` +
-          scopeSection(ctx) +
-          priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
-          priorArtifact(ctx, ARTIFACT_TYPE.TASK_LIST, "Implementation Plan (from the Senior Developer)") +
-          reworkSection(ctx) +
-          `\nImplement the task list now. The Architect's "Implementation guidance for the build team" is authoritative — every construct, OOB reference, and flow step in it must appear in your code, in order. Use \`explain\` for exact Fluent syntax and call \`build\` until it exits 0 before you finish. Emit ONLY file blocks in the required format.`,
+    buildUserPrompt: (ctx) => {
+      if (ctx.native && ctx.planErrors && ctx.failingPlan) return planFixPrompt(ctx);
+      if (ctx.buildErrors && ctx.failingCode) return buildFixPrompt(ctx);
+      const base =
+        `${request(ctx)}` +
+        scopeSection(ctx) +
+        priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
+        priorArtifact(ctx, ARTIFACT_TYPE.TASK_LIST, "Implementation Plan (from the Senior Developer)") +
+        reworkSection(ctx);
+      return ctx.native
+        ? base +
+            `\nBuild the change plan now. The Architect's "Implementation guidance for the build team" is authoritative — every record, OOB reference (\`$lookup\`, never a sys_id), and fulfilment step must appear in the plan, in order. Use \`table_spec\` and \`query\`, then call \`validate_plan\` until it reports no errors. Emit ONE \`\`\`json CHANGE_PLAN block + one \`=== FILE: <name>.js ===\` block per script field.`
+        : base +
+            `\nImplement the task list now. The Architect's "Implementation guidance for the build team" is authoritative — every construct, OOB reference, and flow step in it must appear in your code, in order. Use \`explain\` for exact Fluent syntax and call \`build\` until it exits 0 before you finish. Emit ONLY file blocks in the required format.`;
+    },
   },
 
   QA: {

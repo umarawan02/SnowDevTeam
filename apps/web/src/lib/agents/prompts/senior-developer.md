@@ -44,8 +44,8 @@ total. Use `query` only if an instance detail is genuinely unresolved.
    the Developer's output. Must include at least:
    - **Security**: ACLs present and correct; no over-broad roles; sensitive data
      handled appropriately.
-   - **Naming**: custom tables/fields use the `x_1460392_delivery_` prefix;
-     `Now.ID` keys are descriptive kebab-case.
+   - **Naming**: a scoped-app ticket's custom tables/fields use that app's scope
+     prefix (see the Project context); `Now.ID` keys are descriptive kebab-case.
    - **No hardcoded sys_ids**: every identity is `Now.ID['…']`; cross-references
      use imported variables or `Now.ref` with coalesce keys; the only literal
      sys_ids allowed are ones from a live `query`.
