@@ -330,3 +330,22 @@ export const ROUTE_RANK: Record<RouteTier, number> = {
 export function isRouteTier(v: string): v is RouteTier {
   return v in ROUTE_RANK;
 }
+
+/**
+ * Parse an Architect `ROUTE_OVERRIDE: <TIER>` line. Returns the requested tier
+ * only when it is a valid tier AND strictly *more conservative* than `current`
+ * (higher rank). A loosening or unknown override → `{ ignored: true }`.
+ * No marker → `null`.
+ */
+export function evalRouteOverride(
+  text: string,
+  current: string,
+): { tier: RouteTier } | { ignored: string } | null {
+  const m = text.match(/ROUTE_OVERRIDE:\s*([A-Za-z_]+)/);
+  const want = m?.[1];
+  if (!want || want.toLowerCase() === "none") return null;
+  if (!isRouteTier(want)) return { ignored: `unknown tier "${want}"` };
+  const cur: RouteTier = isRouteTier(current) ? current : "NATIVE_GLOBAL";
+  if (ROUTE_RANK[want] <= ROUTE_RANK[cur]) return { ignored: `${want} is not more conservative than ${cur}` };
+  return { tier: want };
+}

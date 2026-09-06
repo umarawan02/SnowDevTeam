@@ -17,7 +17,7 @@ import {
 import { buildProject, relocateIntoTicketDir, withProjectLock } from "@/lib/nowsdk/workspace";
 import { commitAll, discardTree, resetTicketBranch } from "@/lib/git/repo";
 import { toProjectContext } from "@/lib/projects/resolve";
-import { isNativeTier, isRouteTier, ROUTE_RANK, type RouteTier } from "@/lib/pipeline/route";
+import { isNativeTier, evalRouteOverride, type RouteTier } from "@/lib/pipeline/route";
 import type { Instance } from "@prisma/client";
 import { buildProjectContext } from "@/lib/agents/project-context";
 import { nativeTicketDir, writeScriptFiles } from "@/lib/nativeengine/scripts";
@@ -285,15 +285,14 @@ async function applyRouteOverride(
   ctx: PipelineContext,
   architectText: string,
 ): Promise<{ stop?: PipelineResult } | null> {
-  const m = architectText.match(/ROUTE_OVERRIDE:\s*([A-Z_]+)/);
-  const want = m?.[1];
-  if (!want || want === "none" || !isRouteTier(want)) return null;
-
-  const current = (ctx.route?.tier ?? "NATIVE_GLOBAL") as RouteTier;
-  if (!isRouteTier(current) || ROUTE_RANK[want] <= ROUTE_RANK[current]) {
-    console.warn(`[route] Architect ROUTE_OVERRIDE ${want} is not more conservative than ${current} — ignored`);
+  const current = ctx.route?.tier ?? "NATIVE_GLOBAL";
+  const verdict = evalRouteOverride(architectText, current);
+  if (!verdict) return null;
+  if ("ignored" in verdict) {
+    console.warn(`[route] Architect ROUTE_OVERRIDE ignored — ${verdict.ignored}`);
     return null;
   }
+  const want: RouteTier = verdict.tier;
 
   const rationale = `Route tightened by the Architect: ${current} → ${want}. ${architectText.slice(0, 800)}`;
   await prisma.ticket.update({
