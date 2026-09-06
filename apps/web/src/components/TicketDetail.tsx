@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ticketStatusMeta, roleMeta, isTerminal, relativeTime, scopeLabel } from "@/lib/ui";
+import { ticketStatusMeta, roleMeta, isTerminal, relativeTime, scopeLabel, tierMeta } from "@/lib/ui";
 import { parseQaVerdict, parseReworkFrom } from "@/lib/pipeline/parse";
 import type { TicketDetailJson, PersonaJson } from "@/lib/types";
 import { PipelineFlow } from "@/components/ticket/PipelineFlow";
@@ -27,6 +27,7 @@ export function TicketDetail({
   canAdmin?: boolean;
 }) {
   const [ticket, setTicket] = useState<TicketDetailJson>(initial);
+  const [resuming, setResuming] = useState(false);
 
   const refetch = useCallback(async () => {
     try {
@@ -57,6 +58,24 @@ export function TicketDetail({
   const hasDeployLog = ticket.artifacts.some((a) => a.type === "DEPLOY_LOG");
   const buildLog = latest("BUILD_LOG");
   const buildFailed = ticket.status === "FAILED" && !!buildLog && /✗|failed/i.test(buildLog.content);
+  const tier = tierMeta(ticket.executionTier);
+  const isNative = !!ticket.executionTier?.startsWith("NATIVE");
+  const hasPreviewProblems = ticket.artifacts.some((a) => a.type === "PREVIEW_PROBLEMS");
+  const flowSpec = latest("DESIGN");
+
+  async function resumePipeline() {
+    setResuming(true);
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}/rework`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fromRole: "DEVELOPER", note: "The flow has been built. Verify it is active in the right scope and captured in the update set, then continue." }),
+      });
+      if (res.ok) refetch();
+    } finally {
+      setResuming(false);
+    }
+  }
 
   return (
     <div className="page tdetail">
@@ -76,9 +95,16 @@ export function TicketDetail({
           {ticket.priority && <span className="chip">{cap(ticket.priority)} priority</span>}
           {ticket.requester && <span className="chip">Requested by {ticket.requester}</span>}
           {ticket.category && <span className="chip">{ticket.category}</span>}
-          <span className="chip" title={scopeLabel(ticket.targetScope).full}>
-            {scopeLabel(ticket.targetScope).full}
-          </span>
+          {tier ? (
+            <span className={`chip ${tier.tone}`} title={ticket.tierRationale ?? undefined}>
+              {tier.label}
+              {ticket.routeScope && ticket.routeScope !== "global" ? ` · ${ticket.routeScope}` : ""}
+            </span>
+          ) : (
+            <span className="chip" title={scopeLabel(ticket.targetScope).full}>
+              {scopeLabel(ticket.targetScope).full}
+            </span>
+          )}
           {ticket.reworkRound > 0 && (
             <span className="chip warn">Rework round {ticket.reworkRound}</span>
           )}
@@ -110,6 +136,31 @@ export function TicketDetail({
       {ticket.status === "DEPLOYED" && (
         <div className="deploybanner ok">✓ Deployed to {instanceLabel} — see the Deploy Verification tab.</div>
       )}
+
+      {ticket.status === "AWAITING_FLOW" && (
+        <div className="deploybanner idle" style={{ display: "block" }}>
+          <strong>Waiting on a human to build a Flow Designer flow.</strong>
+          <p style={{ margin: "6px 0 0" }}>
+            The Architect routed this to the flow tier. Build the flow to the spec in the{" "}
+            <b>Design (ADR)</b> tab, with this ticket&rsquo;s update set current, then resume.
+          </p>
+          {flowSpec && (
+            <pre style={{ maxHeight: 220, overflow: "auto", marginTop: 8 }}>{flowSpec.content.slice(0, 4000)}</pre>
+          )}
+          {canAdmin && (
+            <button className="btn sm" type="button" disabled={resuming} onClick={resumePipeline} style={{ marginTop: 8 }}>
+              {resuming ? "Resuming…" : "Resume pipeline"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {hasPreviewProblems && (
+        <div className="deploybanner crit">
+          ⚠ Promotion is blocked by unresolved update-set preview problems — see the <b>Preview Problems</b> tab.
+        </div>
+      )}
+
       {ticket.nativeDeployment && (
         <ReleaseGate
           ticketId={ticket.id}
@@ -190,7 +241,16 @@ export function TicketDetail({
         </section>
       )}
 
-      <ArtifactTabs artifacts={ticket.artifacts} steps={ticket.steps} running={live} />
+      <ArtifactTabs
+        artifacts={ticket.artifacts}
+        steps={ticket.steps}
+        running={live}
+        primaryTab={
+          isNative && ticket.status === "READY_FOR_REVIEW" && ticket.artifacts.some((a) => a.type === "CHANGE_PLAN_DIFF")
+            ? "CHANGE_PLAN_DIFF"
+            : undefined
+        }
+      />
     </div>
   );
 }

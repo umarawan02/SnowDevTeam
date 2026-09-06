@@ -1,30 +1,49 @@
-# SnowDevTeam — AI ServiceNow Delivery Team (MVP)
+# SnowDevTeam — AI ServiceNow Delivery Team
 
 A pipeline of specialized AI agents (Business Analyst → Architect → Senior
-Developer → Developer → QA) turns a customer feature request into deployable
+Developer → Developer → QA) turns a customer feature request into deployed
 ServiceNow artifacts. A human reviews every stage and must click **Approve**
-before anything is built and deployed to a real ServiceNow instance.
+before anything reaches a real instance.
 
-The **Architect** leads with out-of-the-box ServiceNow — it inventories the
-instance and researches best practice (`WebSearch`/`WebFetch`, scoped to
-servicenow.com) before designing anything custom, and hands the build team an
-authoritative *Implementation guidance* spec. The **Developer**'s code is run
-through `now-sdk build` **before QA sees it** (the Developer also has a `build`
-tool to self-check); a compile failure re-runs the Developer against the errors,
-up to 2 times, then fails the ticket at that stage. When **QA** returns
-`NEEDS_REWORK`, the pipeline **loops back automatically** (up to 2 rounds) from
-the stage QA points at, with the findings as a must-fix directive; a reviewer
+## How work is delivered
+
+A deterministic **router** (`apps/web/src/lib/pipeline/route.ts`) decides where
+each request's work belongs — at ticket creation, never by an LLM:
+
+| Route | Where the work lands |
+|---|---|
+| **`NATIVE_GLOBAL`** (the default) | The engine writes metadata via the **Table API** into the Global scope with a **per-ticket update set** — exactly what a human developer does (app picker → update set → edit records → promote). |
+| `NATIVE_SCOPED` | The same, into a customer-owned application scope. |
+| `FLUENT_FLOW` | A net-new Flow Designer flow — authored as ServiceNow **Fluent** (`.now.ts`) in a per-customer project, `now-sdk build` + `install`. |
+| `FLUENT_SCOPED_APP` | A brand-new application the requirement explicitly asked for. |
+| `NOT_SUPPORTED` | A vendor scope (`sn_*`, CSM/HRSD/…) — refused, with a Build-Agent recommendation in the ADR. |
+
+A new application scope is **only** chosen when the requirement text explicitly
+asks for one. See `docs/native-pipeline.md` and `NATIVE_ENGINE_BRIEF.md`.
+
+### The native path
+
+The Developer emits a **validated JSON change plan** (not code), gated by a
+read-only `validate_plan` tool instead of a compiler. The human approves the
+rendered **change-plan diff** — field-level old→new against the dev instance,
+zero writes. **Approve** then applies it: one update set, verified per record,
+then promoted dev → test → prod via `sn_cicd` (retrieve → preview → commit, with
+progress polling; any unresolved preview problem blocks). Nothing an LLM agent
+can reach ever writes to an instance.
+
+### The Fluent path
+
+The **Architect** leads with out-of-the-box ServiceNow — inventories the instance
+and researches best practice before designing anything custom. The **Developer**'s
+code is run through `now-sdk build` **before QA sees it**; a compile failure
+re-runs the Developer against the errors (≤2×). When **QA** returns
+`NEEDS_REWORK`, the pipeline **loops back automatically** (≤2 rounds); a reviewer
 can also **Send back for rework** from the gate.
 
-Status: **MVP complete** — all 4 build phases done, plus a product-UI redesign.
-Submitting a request in the browser runs the 5 agents, the human reviews every
-artifact, and clicking **Approve** builds + deploys a real catalog item and flow
-to the PDI (verified by a post-deploy query). See `BUILD_PROMTP.md` for the phase
-plan and `docs/phase4-validation.md` for the end-to-end validation write-up.
-
-> **Being refactored** (`REFACTOR_BRIEF.md`) from the single-PDI MVP to a
-> multi-customer, scope-aware platform. See **Customers, Instances, Projects**
-> below for the current model.
+Status: **complete** — `BUILD_PROMTP.md` (the 4-phase MVP), then
+`refactor_brief.md` phases 1–2 (multi-customer data model + per-ticket git), then
+`NATIVE_ENGINE_BRIEF.md` (the native engine, phases 3–7). `docs/phase4-validation.md`
+and `docs/servicenow-smoke-findings.md` are the validation write-ups.
 
 ### The app (`apps/web`)
 
@@ -34,9 +53,10 @@ plan and `docs/phase4-validation.md` for the end-to-end validation write-up.
 | `/intake`, `/intake/[id]` | Chat intake — talk to an assistant that gathers the requirements, then **Start development** creates the ticket and kicks off the pipeline. |
 | `/board` | Live status kanban — cards move across columns as the pipeline runs. |
 | `/agents`, `/agents/[role]` | The 5 AI personas (`AgentPersona` table). Rename them and rewrite their profile + "voice" — the name and voice are threaded into that agent's system prompt on every run. |
-| `/tickets/[id]` | Run detail: the pipeline as a live node graph, the review gate, a "what gets built" flow diagram parsed from the generated code, and every artifact. |
+| `/tickets/[id]` | Run detail: the pipeline as a live node graph, the route badge + rationale, the review gate, the change-plan diff as the review surface for native tickets, the release-gate stepper (dev → test → prod), and every artifact. |
 | `/login` | Split-screen sign-in (email + password). |
 | `/settings/users` | Admin — invite users, set roles, activate/deactivate. |
+| `/settings/infrastructure` | Admin — customers, their ServiceNow instances (env, auth mode, `credentialRef`, release/probe status), and the Fluent projects. Create + edit; `allowFluentFlows` per customer. |
 
 Glassmorphic design system in `src/app/globals.css` (light + dark + toggle);
 `@xyflow/react` for the flow diagrams; charts are hand-rolled SVG.
@@ -109,16 +129,20 @@ pnpm exec now-sdk install          # (alias: deploy) — Phase 3, gated by Appro
 
 ## Customers, Instances, Projects
 
-A ticket is attributed to a `Customer` → `Instance` (a ServiceNow environment) →
-`FluentProject` (a standalone `now-sdk` project — its own directory, `package.json`,
-`node_modules`, git repo — under `WORKSPACES_ROOT`, default `./workspaces/`, git-ignored).
-There is no shared workspace and no hard-coded scope: which project a ticket builds
-against is resolved per customer + `targetScope` (`global` or `scoped`) at ticket
-creation. `pnpm --filter web seed-demo-customer` registers the existing PDI
-(dev424712) as a demo customer and imports its two already-installed apps
-(`AI Delivery App` scoped, `AI Delivery Global` global) as projects, so the pipeline
-has real projects to build against out of the box. `servicenow/delivery-app/` is the
-legacy single-workspace project this replaces; it's left on disk unmanaged.
+A ticket is attributed to a `Customer` → `Instance` (a ServiceNow environment).
+A **Fluent-tier** ticket also gets a `FluentProject` — a standalone `now-sdk`
+project (own directory, `package.json`, `node_modules`, git repo) under
+`WORKSPACES_ROOT` (default `./workspaces/`, git-ignored). A **native-tier** ticket
+has no project; its script files live in `workspaces/<customer>/native/<ticket>/`
+and its records go straight through the Table API. Manage all of this at
+`/settings/infrastructure`, or seed the demo:
+`pnpm --filter web seed-demo-customer` registers the PDI (dev424712) as the demo
+customer + instance and imports its two apps as projects.
+
+Per-instance setup for the native engine (once): `setup-service-users` (the
+`svc_snowdevteam_ro` / `_deploy` OAuth users, `authMode = "oauth_cc"`),
+`probe-instance` (release detection), `setup-native-engine` (the server-side
+Scripted REST resource). See `docs/customer-onboarding.md`.
 
 ### The project accumulates (git per ticket)
 

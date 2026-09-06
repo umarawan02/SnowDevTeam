@@ -9,13 +9,21 @@ export function ArtifactTabs({
   artifacts,
   steps,
   running,
+  /** When set, this tab is selected first (e.g. the change-plan diff for a
+   *  native ticket ready for review). */
+  primaryTab,
 }: {
   artifacts: ArtifactJson[];
   steps: StepJson[];
   running: boolean;
+  primaryTab?: string;
 }) {
   const present = ARTIFACT_TAB_ORDER.filter((t) => artifacts.some((a) => a.type === t));
-  const [selected, setSelected] = useState<string | null>(present[present.length - 1] ?? null);
+  const initial =
+    primaryTab && present.includes(primaryTab as (typeof present)[number])
+      ? primaryTab
+      : (present[present.length - 1] ?? null);
+  const [selected, setSelected] = useState<string | null>(initial);
   const userPicked = useRef(false);
   const prevCount = useRef(present.length);
 
@@ -83,6 +91,12 @@ export function ArtifactTabs({
               {active.content.length.toLocaleString()} chars{dur ? ` · ${dur}` : ""}
             </span>
           </div>
+          {active.type === "CHANGE_PLAN_DIFF" && primaryTab === "CHANGE_PLAN_DIFF" && (
+            <p className="hint" style={{ margin: "0 0 10px" }}>
+              This is the review surface — approving the ticket applies exactly these changes to a
+              dev instance, in one update set.
+            </p>
+          )}
           <Markdown source={active.content} />
         </div>
       )}

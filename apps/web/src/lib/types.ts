@@ -34,8 +34,10 @@ export interface TicketJson {
   category: string | null;
   createdAt: string;
   updatedAt: string;
-  // Native engine (NATIVE_ENGINE_BRIEF Phase 5). Null on Fluent-tier tickets.
+  // Native engine (NATIVE_ENGINE_BRIEF Phase 5/6). Null on legacy tickets.
   executionTier: string | null;
+  tierRationale: string | null;
+  routeScope: string | null;
   releaseGate: string | null;
   changeRequestRef: string | null;
 }
@@ -118,6 +120,39 @@ export interface AdminUserJson {
   lastLoginAt: string | null;
   createdAt: string;
   _count: { createdTickets: number; reviewedTickets: number };
+}
+
+// Settings → Infrastructure (NATIVE_ENGINE_BRIEF §7.4).
+export interface InstanceAdminJson {
+  id: string;
+  name: string;
+  url: string;
+  env: string;
+  authMode: string;
+  credentialRef: string;
+  readOnlyCredentialRef: string | null;
+  releaseName: string | null;
+  releaseBuild: string | null;
+  releaseDetectedAt: string | null;
+}
+
+export interface ProjectAdminJson {
+  id: string;
+  name: string;
+  scope: string;
+  kind: string;
+  defaultBranch: string;
+}
+
+export interface CustomerAdminJson {
+  id: string;
+  name: string;
+  slug: string;
+  allowFluentFlows: boolean;
+  createdAt: string;
+  instances: InstanceAdminJson[];
+  projects: ProjectAdminJson[];
+  _count: { tickets: number };
 }
 
 export interface PersonaJson {

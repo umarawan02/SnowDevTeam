@@ -1032,3 +1032,29 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; letter-spac
 .md .filecard > header .path { color: var(--ink); font-weight: 500; overflow-x: auto; white-space: nowrap; }
 .md .filecard > header .lines { margin-left: auto; color: var(--ink-faint); flex: none; font-size: 10.5px; }
 .md .filecard pre { margin: 0; border: none; border-radius: 0; }
+
+/* Settings → Infrastructure (NATIVE_ENGINE_BRIEF §7.4) */
+.infra { display: flex; flex-direction: column; gap: 16px; }
+.infra .formerr { margin: 0; }
+.infra-newcust { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.infra-newcust label { font-weight: 600; font-size: 13px; }
+.infra-newcust input { flex: 1; min-width: 180px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.infra-cust { display: flex; flex-direction: column; gap: 14px; }
+.infra-custhead { display: flex; align-items: flex-start; gap: 14px; }
+.infra-custhead h3 { font-family: var(--font-display); font-size: 1rem; font-weight: 600; }
+.infra-custhead .hint { font-size: 11.5px; color: var(--ink-faint); }
+.infra-flag { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.infra-sub { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.infra-sub h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); }
+.infra-subhead { display: flex; align-items: center; justify-content: space-between; }
+.infra-inst, .infra-proj { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.infra-instmain { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.infra-instmain a { text-decoration: none; }
+.infra-instmeta { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--ink-faint); flex: 1; min-width: 180px; }
+.infra-inst .btn.sm { margin-left: auto; }
+.infra-proj { font-size: 12px; }
+.infra-proj .hint { color: var(--ink-faint); }
+.envbadge { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--idle-soft); color: var(--idle); }
+.envbadge.dev { background: var(--ok-soft); color: var(--ok); }
+.envbadge.test { background: var(--accent-soft); color: var(--accent-ink); }
+.envbadge.prod { background: var(--crit-soft); color: var(--crit); }
