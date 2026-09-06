@@ -44,7 +44,11 @@ async function main() {
 
   const global = await resolveScope(client, "global");
   const userSysId = await getDeployUserSysId(client);
-  await setCurrentApplication(client, global.sysId);
+  // best-effort — concoursepicker is confirmed broken headless (open item #1);
+  // this test doesn't actually need a specific current scope.
+  await setCurrentApplication(client, global.sysId).catch((e) =>
+    console.log(`  (could not set current scope: ${e instanceof Error ? e.message : e} — proceeding)`),
+  );
 
   const def = await defaultUpdateSet(client, global.sysId);
   const defBaseline = def ? await updateCount(client, def.sysId) : 0;

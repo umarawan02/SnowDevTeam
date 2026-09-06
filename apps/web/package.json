@@ -16,6 +16,7 @@
     "rerun-from": "tsx scripts/rerun-from.mts",
     "seed-demo-customer": "tsx scripts/seed-demo-customer.mts",
     "setup-oauth": "tsx scripts/setup-oauth.mts",
+    "setup-service-users": "tsx scripts/setup-service-users.mts",
     "probe-instance": "tsx scripts/probe-instance.mts",
     "smoke": "tsx scripts/smoke-all.mts",
     "smoke-cleanup": "tsx scripts/smoke-cleanup.mts"

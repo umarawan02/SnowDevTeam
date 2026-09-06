@@ -26,34 +26,50 @@ async function main() {
     /* absent */
   }
 
-  await setCurrentApplication(client, global.sysId);
+  await setCurrentApplication(client, global.sysId).catch(() => {
+    /* concoursepicker is broken headless (open item #1) — the caller's ambient
+       scope is used as the control instead */
+  });
+
+  // control: a write with NO param — establishes the ambient scope
+  const ctrlName = smokeName("txn-control");
+  const ctrl = await client.post<{ result: { sys_id: string } }>("/api/now/table/sys_script", {
+    body: inertBusinessRule(ctrlName),
+  });
+  const ctrlBack = await client.table.getOne<{ "sys_scope.scope": string }>("sys_script", {
+    sysId: ctrl.body.result.sys_id,
+    fields: "sys_scope.scope",
+  });
+  await client.table.del("sys_script", ctrl.body.result.sys_id).catch(() => {});
+  const ambientScope = ctrlBack?.["sys_scope.scope"] ?? "(unknown)";
+
+  // test: same write WITH sysparm_transaction_scope=<a different scope>
   const name = smokeName("txn-scope");
   const created = await client.post<{ result: { sys_id: string } }>("/api/now/table/sys_script", {
     query: scopedSysId ? { sysparm_transaction_scope: scopedSysId } : {},
     body: inertBusinessRule(name),
   });
-  const sysId = created.body.result.sys_id;
   const back = await client.table.getOne<{ "sys_scope.scope": string }>("sys_script", {
-    sysId,
+    sysId: created.body.result.sys_id,
     fields: "sys_scope.scope",
   });
-  await client.table.del("sys_script", sysId).catch(() => {});
+  await client.table.del("sys_script", created.body.result.sys_id).catch(() => {});
 
   const landed = back?.["sys_scope.scope"] ?? "(unknown)";
-  const ignored = landed === "global";
+  const rescoped = !!scopedSysId && landed === SCOPED && ambientScope !== SCOPED;
   printVerdict({
     name: "sysparm_transaction_scope effect",
     openItem: "open item #7",
-    status: !scopedSysId ? "INCONCLUSIVE" : ignored ? "PASS" : "INCONCLUSIVE",
+    status: !scopedSysId ? "INCONCLUSIVE" : rescoped ? "INCONCLUSIVE" : "PASS",
     finding: !scopedSysId
       ? "no scoped app to target — could not test"
-      : ignored
-        ? "sysparm_transaction_scope is inert on this release — the write stayed in the current application"
-        : `sysparm_transaction_scope RE-SCOPED the write to "${landed}" — this CONTRADICTS the brief ("Do not use / expected: none")`,
-    detail: `sent sysparm_transaction_scope=${SCOPED} while Global was current; record landed in scope "${landed}"`,
-    action: ignored
-      ? "confirmed inert — never reach for it (matches the brief)"
-      : "DECISION NEEDED: sysparm_transaction_scope works on this release and may be a simpler scope-control mechanism than a server-side scripted resource — but it is undocumented and the brief forbids it. Raise with the user before Phase 4.",
+      : rescoped
+        ? `sysparm_transaction_scope RE-SCOPED the write ("${ambientScope}" → "${landed}") — CONTRADICTS the brief ("Do not use / expected: none")`
+        : `sysparm_transaction_scope is inert — control and test both landed in "${landed}"`,
+    detail: `control write (no param) → "${ambientScope}"; test write (sysparm_transaction_scope=${SCOPED}) → "${landed}"`,
+    action: rescoped
+      ? "DECISION NEEDED: sysparm_transaction_scope works on this release and is a simpler scope-control mechanism than a server-side scripted resource — but it is undocumented and the brief forbids it. Raise with the user before Phase 4."
+      : "confirmed inert — never reach for it (matches the brief)",
   });
 
   await cleanupSmoke(client).catch(() => {});

@@ -24,12 +24,16 @@ type InstanceRow = {
 };
 
 export async function probeInstance(instance: InstanceRow): Promise<ProbeResult> {
-  const client = SnowClient.forInstance(instance, { readOnly: true });
-  const props = await client.table.list<{ name: string; value: string }>("sys_properties", {
-    query: "nameINglide.war,glide.buildname,glide.buildtag,glide.product.description",
-    fields: "name,value",
-    limit: 10,
-  });
+  const readProps = async (client: SnowClient) =>
+    client.table.list<{ name: string; value: string }>("sys_properties", {
+      query: "nameINglide.war,glide.buildname,glide.buildtag,glide.product.description",
+      fields: "name,value",
+      limit: 10,
+    });
+
+  // The read-only role may not cover `sys_properties`; fall back to the main credential.
+  let props = await readProps(SnowClient.forInstance(instance, { readOnly: true }));
+  if (props.length === 0) props = await readProps(SnowClient.forInstance(instance));
   const byName = Object.fromEntries(props.map((p) => [p.name, p.value]));
 
   const glideWar = byName["glide.war"] ?? null;

@@ -51,23 +51,20 @@ async function main() {
   }
 
   hr();
-  console.log("Scope round-trip");
+  console.log("Scope round-trip (best-effort — concoursepicker is confirmed broken headless, open item #1)");
   hr();
-  await setCurrentApplication(client, global.sysId);
-  console.log(`✓ current application → Global (${global.sysId}) — verified`);
-  if (scoped) {
+  const trySwitch = async (label: string, sysId: string) => {
     try {
-      await setCurrentApplication(client, scoped.sysId);
-      console.log(`✓ current application → ${scoped.name} (${scoped.sysId}) — verified`);
-      await setCurrentApplication(client, global.sysId);
-      console.log(`✓ current application → Global — verified`);
+      await setCurrentApplication(client, sysId);
+      console.log(`✓ current application → ${label} (${sysId}) — verified`);
     } catch (e) {
-      console.log(
-        `⚠ could not switch to the scoped app: ${e instanceof Error ? e.message : e}\n` +
-          `  (this is exactly open item #1 — see \`pnpm --filter web smoke\`)`,
-      );
+      console.log(`✗ could not switch to ${label}: ${e instanceof Error ? e.message : e}`);
     }
-  }
+  };
+  await trySwitch("Global", global.sysId);
+  if (scoped) await trySwitch(scoped.name, scoped.sysId);
+  await trySwitch("Global", global.sysId);
+  console.log("\n→ Phase 4/5 uses a server-side scripted resource (and/or sysparm_transaction_scope) for scope control.");
 
   hr();
   console.log(
