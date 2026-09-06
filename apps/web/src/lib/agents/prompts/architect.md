@@ -69,7 +69,23 @@ Decision.
 ## Output format (Markdown ADR)
 
 1. `# ADR: <title>`
-2. `## Context` — the problem, from the requirements. The key acceptance criteria
+2. `## Scope & routing` — **mandatory.** Restate the **Route** from the Project
+   context (its tier and the one-line rationale). The router is deterministic and
+   you may **only argue for something *more conservative*** — never looser. The
+   conservatism order is:
+   `NATIVE_GLOBAL` → `NATIVE_SCOPED` → `FLUENT_FLOW` → `FLUENT_SCOPED_APP` → `NOT_SUPPORTED`.
+   - If the requirement genuinely needs a route further right than the one
+     chosen — a net-new Flow Designer flow the native tier can't author, a change
+     inside a vendor scope, a brand-new application the requirement explicitly
+     asks for — put **`ROUTE_OVERRIDE: <TIER>`** on its own line, followed by one
+     paragraph of justification. Quote the exact requirement sentence verbatim if
+     you are proposing `FLUENT_SCOPED_APP` (a new app scope) — no quote, no new
+     app.
+   - Otherwise write `ROUTE_OVERRIDE: none` and proceed.
+   - List every **reused OOB record** with its `name` + `sys_id` (from `query`).
+   - State explicitly: **nothing in this design deletes or removes an existing
+     record.**
+3. `## Context` — the problem, from the requirements. The key acceptance criteria
    the design must satisfy.
 3. `## Decision` — the chosen approach in prose. It **must** contain three
    explicit lists:
@@ -86,12 +102,13 @@ Decision.
    custom table, business rules, ACLs. Reference the `explain` topics you
    confirmed.
 5. `## Data Model` — tables touched or created, fields and types, relationships.
-   Honour the **Target scope** line in the request: for a GLOBAL ticket use
-   plain net-new records and no scope prefix (avoid custom tables; `u_<name>` if
-   one is unavoidable), and a direct `UiPolicy` / `BusinessRule` / `Acl` on an
-   OOB table is allowed where it is the simplest correct design. For a SCOPED
-   ticket, custom tables are `x_1460392_delivery_<name>` and OOB-table logic must
-   move into the flow. State the scope explicitly in the Decision.
+   Honour the **Scope** in the Project context: for a `global` ticket use plain
+   net-new records and no scope prefix (avoid custom tables; `u_<name>` if one is
+   unavoidable), and a direct `UiPolicy` / `BusinessRule` / `Acl` on an OOB table
+   is allowed where it is the simplest correct design. For a scoped-app ticket,
+   custom tables are `<app-scope>_<name>` (the exact prefix is in the Project
+   context) and OOB-table logic must move into the flow. State the scope
+   explicitly in the Decision.
 6. `## Flow Design` — the fulfillment flow as an ordered trigger → steps list,
    including the manager-approval branch (approved vs rejected) and the concrete
    fulfillment work item.

@@ -8,7 +8,7 @@
  * the instance probes (§6.1) are exercised separately against a real PDI.
  */
 import "@/lib/config";
-import { routeTicket, type RouteInput, type RouteTier } from "@/lib/pipeline/route";
+import { routeTicket, evalRouteOverride, type RouteInput, type RouteTier } from "@/lib/pipeline/route";
 
 const DEMO_APPS = [{ scope: "x_acme_onboard", name: "Acme Onboarding" }];
 
@@ -120,6 +120,24 @@ async function main() {
     const bad = r.tier === "FLUENT_SCOPED_APP";
     console.log(`${bad ? "✗" : "✓"}  ${r.tier.padEnd(16)} ${text}`);
     if (bad) failures++;
+  }
+
+  console.log("\n— Architect ROUTE_OVERRIDE (tighten only) —");
+  const ovr: [string, string, string, string][] = [
+    // text, currentTier, expected: "tier:X" | "ignored" | "null"
+    ["ROUTE_OVERRIDE: NOT_SUPPORTED\nThis touches the CSM case table.", "NATIVE_GLOBAL", "tier:NOT_SUPPORTED", "vendor scope → NOT_SUPPORTED"],
+    ["ROUTE_OVERRIDE: FLUENT_FLOW\nNeeds a net-new flow.", "NATIVE_GLOBAL", "tier:FLUENT_FLOW", "native → flow"],
+    ["ROUTE_OVERRIDE: NATIVE_GLOBAL\nActually this is fine natively.", "FLUENT_FLOW", "ignored", "loosening is ignored"],
+    ["ROUTE_OVERRIDE: none", "NATIVE_GLOBAL", "null", "no override"],
+    ["No marker here at all.", "NATIVE_GLOBAL", "null", "missing marker"],
+    ["ROUTE_OVERRIDE: BANANAS", "NATIVE_GLOBAL", "ignored", "unknown tier"],
+  ];
+  for (const [text, cur, want, label] of ovr) {
+    const r = evalRouteOverride(text, cur);
+    const got = r === null ? "null" : "ignored" in r ? "ignored" : `tier:${r.tier}`;
+    const ok = got === want;
+    console.log(`${ok ? "✓" : "✗"}  ${label}${ok ? "" : `  — got ${got}, want ${want}`}`);
+    if (!ok) failures++;
   }
 
   console.log("");

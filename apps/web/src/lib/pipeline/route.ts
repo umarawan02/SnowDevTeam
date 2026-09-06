@@ -314,3 +314,38 @@ function escapeRe(s: string): string {
 export function isNativeTier(tier: string | null | undefined): boolean {
   return !!tier && tier.startsWith("NATIVE");
 }
+
+/**
+ * Conservatism order (NATIVE_ENGINE_BRIEF §6). The Architect's `ROUTE_OVERRIDE`
+ * (Phase 7) may only move the tier to a *higher* rank, never lower.
+ */
+export const ROUTE_RANK: Record<RouteTier, number> = {
+  NATIVE_GLOBAL: 0,
+  NATIVE_SCOPED: 1,
+  FLUENT_FLOW: 2,
+  FLUENT_SCOPED_APP: 3,
+  NOT_SUPPORTED: 4,
+};
+
+export function isRouteTier(v: string): v is RouteTier {
+  return v in ROUTE_RANK;
+}
+
+/**
+ * Parse an Architect `ROUTE_OVERRIDE: <TIER>` line. Returns the requested tier
+ * only when it is a valid tier AND strictly *more conservative* than `current`
+ * (higher rank). A loosening or unknown override → `{ ignored: true }`.
+ * No marker → `null`.
+ */
+export function evalRouteOverride(
+  text: string,
+  current: string,
+): { tier: RouteTier } | { ignored: string } | null {
+  const m = text.match(/ROUTE_OVERRIDE:\s*([A-Za-z_]+)/);
+  const want = m?.[1];
+  if (!want || want.toLowerCase() === "none") return null;
+  if (!isRouteTier(want)) return { ignored: `unknown tier "${want}"` };
+  const cur: RouteTier = isRouteTier(current) ? current : "NATIVE_GLOBAL";
+  if (ROUTE_RANK[want] <= ROUTE_RANK[cur]) return { ignored: `${want} is not more conservative than ${cur}` };
+  return { tier: want };
+}

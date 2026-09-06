@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "@/lib/config";
 import { createNowsdkMcpServer, type NowsdkServerOpts, NOWSDK_TOOL_NAMES, NOWSDK_BUILD_TOOL } from "@/lib/nowsdk/mcp";
+import { createNativeMcpServer, type NativeServerOpts, NATIVE_TOOL_NAMES } from "@/lib/nativeengine/mcp";
 
 export interface RunAgentInput {
   systemPrompt: string;
@@ -11,10 +12,13 @@ export interface RunAgentInput {
   webTools?: boolean;
   /** Also allow the `build` tool (Developer — compile draft code). Implies withTools. */
   buildTool?: boolean;
-  /** The ticket's project + ticket dir. Required whenever any of
-   *  withTools/webTools/buildTool is set — every nowsdk MCP tool (explain,
-   *  query, build) runs `now-sdk` against a specific project. */
+  /** The ticket's Fluent project + ticket dir — Fluent tier only. Required
+   *  whenever withTools/buildTool is set on a Fluent ticket. */
   nowsdk?: NowsdkServerOpts;
+  /** The ticket's instance + native dir — native tier only. When set, the
+   *  native MCP server (query / table_spec / validate_plan) is mounted instead
+   *  of the now-sdk one. */
+  native?: NativeServerOpts;
   model?: string;
 }
 
@@ -44,15 +48,17 @@ export interface RunAgentResult {
  * step FAILED.
  */
 export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
-  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool, nowsdk } = input;
+  const { systemPrompt, userPrompt, maxTurns, withTools, webTools, buildTool, nowsdk, native } = input;
   const model = input.model ?? config.ANTHROPIC_MODEL;
-  // now-sdk MCP tools (explain / query / build) need a Fluent project on disk.
-  // Native-tier tickets (NATIVE_ENGINE_BRIEF §6) have none — the caller passes
-  // no `nowsdk`, so those tools are unavailable this run. WebSearch / WebFetch
-  // do not need a project.
-  const needsNowsdk = (withTools || buildTool) && !!nowsdk;
-  if ((withTools || buildTool) && !nowsdk) {
-    console.warn("[runAgent] withTools/buildTool set without `nowsdk` — running without the now-sdk MCP tools");
+  // A tool-using stage gets exactly one MCP server: `native` for a native-tier
+  // ticket (query / table_spec / validate_plan — all read-only), else `nowsdk`
+  // (explain / query / build) for the Fluent tier. WebSearch / WebFetch need
+  // neither.
+  const wantsTools = withTools || buildTool;
+  const useNative = wantsTools && !!native;
+  const useNowsdk = wantsTools && !native && !!nowsdk;
+  if (wantsTools && !native && !nowsdk) {
+    console.warn("[runAgent] tool-using stage with neither `native` nor `nowsdk` — running without MCP tools");
   }
 
   const toolCalls: ToolCall[] = [];
@@ -73,16 +79,21 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       settingSources: [],
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
-      ...(needsNowsdk
+      ...(useNative
         ? {
-            mcpServers: { nowsdk: createNowsdkMcpServer(nowsdk!) },
-            allowedTools: [
-              ...NOWSDK_TOOL_NAMES,
-              ...(buildTool ? [NOWSDK_BUILD_TOOL] : []),
-              ...(webTools ? WEB_TOOLS : []),
-            ],
+            mcpServers: { native: createNativeMcpServer(native!) },
+            allowedTools: [...NATIVE_TOOL_NAMES, ...(webTools ? WEB_TOOLS : [])],
           }
-        : {}),
+        : useNowsdk
+          ? {
+              mcpServers: { nowsdk: createNowsdkMcpServer(nowsdk!) },
+              allowedTools: [
+                ...NOWSDK_TOOL_NAMES,
+                ...(buildTool ? [NOWSDK_BUILD_TOOL] : []),
+                ...(webTools ? WEB_TOOLS : []),
+              ],
+            }
+          : {}),
     },
   });
 

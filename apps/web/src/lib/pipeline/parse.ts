@@ -75,6 +75,60 @@ export function parseQaVerdict(text: string): QaVerdict {
   return (m?.[1] as QaVerdict) ?? null;
 }
 
+// --- Native tier (NATIVE_ENGINE_BRIEF §7) --------------------------------
+
+const JSON_FENCE_RE = /```json\s*\r?\n([\s\S]*?)\r?\n```/g;
+const NATIVE_FILE_RE =
+  /===\s*FILE:\s*([A-Za-z0-9._-]+\.js)\s*===\s*\r?\n```[a-zA-Z0-9]*\r?\n([\s\S]*?)\r?\n```\s*\r?\n===\s*END FILE\s*===/g;
+
+/**
+ * Parse the native Developer's output: exactly one ```json fenced block that is
+ * the CHANGE_PLAN (an object with a `changes` array), plus zero-or-more
+ * `=== FILE: <name>.js ===` script blocks (bare names — they land flat in the
+ * ticket's native dir). Never throws.
+ */
+export function parseNativePlan(text: string): {
+  planJson: string | null;
+  scripts: GeneratedFile[];
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+
+  let planJson: string | null = null;
+  JSON_FENCE_RE.lastIndex = 0;
+  let jm: RegExpExecArray | null;
+  const candidates: string[] = [];
+  while ((jm = JSON_FENCE_RE.exec(text)) !== null) candidates.push(jm[1]);
+  const tryParse = (raw: string): string | null => {
+    const attempts = [raw, raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/[^\n]*$/gm, "")];
+    for (const a of attempts) {
+      try {
+        const parsed = JSON.parse(a) as { changes?: unknown };
+        if (parsed && typeof parsed === "object" && Array.isArray(parsed.changes)) return a.trim();
+      } catch {
+        /* try the next form */
+      }
+    }
+    return null;
+  };
+  for (const c of candidates) {
+    const got = tryParse(c);
+    if (!got) continue;
+    if (planJson) warnings.push("More than one CHANGE_PLAN JSON block — using the first.");
+    else planJson = got;
+  }
+  if (!planJson) warnings.push("No ```json CHANGE_PLAN block (an object with a `changes` array) found.");
+
+  const scripts: GeneratedFile[] = [];
+  NATIVE_FILE_RE.lastIndex = 0;
+  let fm: RegExpExecArray | null;
+  while ((fm = NATIVE_FILE_RE.exec(text)) !== null) {
+    scripts.push({ path: fm[1].trim(), content: fm[2] });
+  }
+
+  return { planJson, scripts, warnings };
+}
+
 export type ReworkFrom = "ARCHITECT" | "SENIOR_DEV" | "DEVELOPER";
 
 /** The stage QA wants the rework to start from, from a `REWORK_FROM:` line. */

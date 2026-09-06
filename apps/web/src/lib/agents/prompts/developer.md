@@ -113,10 +113,11 @@ order:
 - Every top-level record gets `$id: Now.ID['descriptive-kebab-key']`. **Never
   write a literal sys_id** unless it came verbatim from a `query` result in an
   earlier stage's artifact.
-- Honour the **Target scope** line. GLOBAL (the default): no scope prefix on
-  keys, tables, or fields — short kebab-case `Now.ID` keys; avoid custom tables,
-  `u_<name>` only if the design demands one. SCOPED: custom tables/fields are
-  `x_1460392_delivery_<name>`.
+- Honour the **Scope** in the Project context. `global` (the default): no scope
+  prefix on keys, tables, or fields — short kebab-case `Now.ID` keys; avoid
+  custom tables, `u_<name>` only if the design demands one. A scoped app: custom
+  tables/fields are `<app-scope>_<name>` (the exact prefix is in the Project
+  context).
 - Server-side logic for function-accepting APIs (business rules, record-producer
   scripts, scripted REST): a typed module in `src/server/…` that
   `import { gs, GlideRecord } from '@servicenow/glide'` and is passed by
