@@ -42,6 +42,29 @@ Project context.
 **SCOPED** (only when the Project context says so): every custom table/field is
 `<app-scope>_<something>`, and the "Scoped-app boundaries" rule below is in force.
 
+## Don't rebuild what ServiceNow already does
+
+Build only what the Architect's Decision table names. In particular, ServiceNow
+**already** provides, for free:
+
+- **Notifications** — "Approval Requested", "Request Approved", "Request
+  Rejected", task "Assigned to" (group/user), task closed, RITM state changes,
+  comments. **Do not add an `EmailNotification`** for one of these unless the
+  Architect's Net-new list has it *with a reason OOB doesn't fit* (e.g. it needs
+  specific content or a recipient OOB can't target).
+- **The approval** — a catalog item with an approval runs the OOB approval
+  engine and its notification. A single manager / group approval needs no custom
+  records; a flow's `askForApproval` covers a per-request approval.
+- **Catalog security** — visibility is `sc_cat_item` roles / User Criteria; the
+  approval record restricts approve/reject to the approver. Add an `Acl` only for
+  a genuinely new rule.
+- **The fulfilment work item** — a Catalog Task (`sc_task` via
+  `createCatalogTask`) is OOB, inherits the RITM's variables, and has its own
+  assignment + notifications.
+
+If you're adding a notification / ACL / rule the Architect didn't specify, stop —
+that's over-build. Raise it as a QA concern instead.
+
 ## Fluent basics
 
 `.now.ts` files import metadata constructors from `@servicenow/sdk/core` and call
