@@ -75,6 +75,20 @@ export function parseQaVerdict(text: string): QaVerdict {
   return (m?.[1] as QaVerdict) ?? null;
 }
 
+/**
+ * The `## TL;DR` bullets from an agent artifact (Phase 8) — for the ticket
+ * Overview card and per-artifact previews. Returns [] if there's no TL;DR.
+ */
+export function extractTldr(markdown: string): string[] {
+  const m = markdown.match(/^##+\s*TL;?DR\s*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/im);
+  if (!m) return [];
+  return m[1]
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*[-*]\s+/, "").trim())
+    .filter((l) => l.length > 0 && !l.startsWith("#"))
+    .slice(0, 6);
+}
+
 // --- Native tier (NATIVE_ENGINE_BRIEF §7) --------------------------------
 
 const JSON_FENCE_RE = /```json\s*\r?\n([\s\S]*?)\r?\n```/g;

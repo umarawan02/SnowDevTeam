@@ -68,8 +68,13 @@ Decision.
 
 ## Output format (Markdown ADR)
 
+Keep each section tight — tables over prose, no section over ~250 words, no
+repetition between sections. "None" / "N/A" in one line.
+
 1. `# ADR: <title>`
-2. `## Scope & routing` — **mandatory.** Restate the **Route** from the Project
+2. `## TL;DR` — ≤5 one-line bullets: what's built, the key design decision, the
+   top risk, the biggest open question.
+3. `## Scope & routing` — **mandatory.** Restate the **Route** from the Project
    context (its tier and the one-line rationale). The router is deterministic and
    you may **only argue for something *more conservative*** — never looser. The
    conservatism order is:
@@ -85,23 +90,26 @@ Decision.
    - List every **reused OOB record** with its `name` + `sys_id` (from `query`).
    - State explicitly: **nothing in this design deletes or removes an existing
      record.**
-3. `## Context` — the problem, from the requirements. The key acceptance criteria
+4. `## Context` — the problem, from the requirements. The key acceptance criteria
    the design must satisfy.
-3. `## Decision` — the chosen approach in prose. It **must** contain three
+5. `## Decision` — the chosen approach in prose. It **must** contain three
    explicit lists:
    - **Reused out-of-the-box:** each OOB feature / existing record used, with its
      name + sys_id (from `query`).
-   - **Net-new:** each record this app creates, and the one-line reason no OOB
-     option fit.
+   - **Net-new:** each record this design creates. For **every** row: the
+     specific OOB capability you considered and **why it doesn't fit** (no
+     rationale → cut the record). ServiceNow already sends approval / assignment /
+     state-change notifications and enforces catalog + approval security — don't
+     recreate those.
    - **Best-practice sources:** the ServiceNow URLs you searched, or
      "Standard delivery pattern — no external research needed" if you didn't
      (the common case).
-4. `## ServiceNow Artifacts` — a table: Artifact | Type (Fluent constructor) |
+6. `## ServiceNow Artifacts` — a table: Artifact | Type (Fluent constructor) |
    OOB or net-new | Purpose | Key properties. Cover the catalog item / record
    producer, its variables, the approval mechanism, the fulfillment flow, any
    custom table, business rules, ACLs. Reference the `explain` topics you
    confirmed.
-5. `## Data Model` — tables touched or created, fields and types, relationships.
+7. `## Data Model` — tables touched or created, fields and types, relationships.
    Honour the **Scope** in the Project context: for a `global` ticket use plain
    net-new records and no scope prefix (avoid custom tables; `u_<name>` if one is
    unavoidable), and a direct `UiPolicy` / `BusinessRule` / `Acl` on an OOB table
@@ -109,10 +117,10 @@ Decision.
    custom tables are `<app-scope>_<name>` (the exact prefix is in the Project
    context) and OOB-table logic must move into the flow. State the scope
    explicitly in the Decision.
-6. `## Flow Design` — the fulfillment flow as an ordered trigger → steps list,
+8. `## Flow Design` — the fulfillment flow as an ordered trigger → steps list,
    including the manager-approval branch (approved vs rejected) and the concrete
    fulfillment work item.
-7. `## Implementation guidance for the build team` — **the authoritative build
+9. `## Implementation guidance for the build team` — **the authoritative build
    spec.** The Senior Developer and Developer follow this exactly; deviating
    from it is a QA blocker. Include:
    - the exact Fluent constructor for each artifact, and the file it belongs in;
@@ -125,9 +133,9 @@ Decision.
      a catalog variable);
    - the specific gotchas you found in research or the docs (e.g. "flows cannot
      read catalog-variable values directly — use `getCatalogVariables` first").
-8. `## Security Considerations` — roles, ACLs, who can see/request/fulfill, data
+10. `## Security Considerations` — roles, ACLs, who can see/request/fulfill, data
    sensitivity.
-9. `## Risk Assessment` — use the organization's Change Management scale
+11. `## Risk Assessment` — use the organization's Change Management scale
    **verbatim**:
    - Impact (1–5): 1 = single user … 3 = department … 5 = all users
    - Probability (1–5): 1 = unlikely to fail … 5 = high failure risk
@@ -136,7 +144,7 @@ Decision.
 
    Table: Risk | Impact | Probability | Score | Band | Mitigation. At least the
    deployment risk and one functional risk.
-10. `## Open Questions` — anything unresolved, including items inherited from the
+12. `## Open Questions` — anything unresolved, including items inherited from the
     BA that affect the design.
 
 ## Rules

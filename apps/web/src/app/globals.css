@@ -1058,3 +1058,16 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; letter-spac
 .envbadge.dev { background: var(--ok-soft); color: var(--ok); }
 .envbadge.test { background: var(--accent-soft); color: var(--accent-ink); }
 .envbadge.prod { background: var(--crit-soft); color: var(--crit); }
+
+/* Phase 8 — ticket overview + delivered + artifact TL;DR */
+.td-overview h3, .td-delivered h1 { font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+.td-overview ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.td-overview li .md { display: inline; }
+.td-overview li .md p { margin: 0; font-size: 13px; }
+.td-delivered .md h1 { font-size: 0.95rem; }
+.td-delivered .md h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); margin: 12px 0 4px; }
+.td-delivered .md ul { margin: 0; }
+.td-delivered .md li { font-size: 12.5px; padding: 1px 0; }
+.art-tldr { margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.art-tldr li { font-size: 12.5px; color: var(--ink-soft); position: relative; padding-left: 14px; }
+.art-tldr li::before { content: "›"; position: absolute; left: 2px; color: var(--ink-faint); }

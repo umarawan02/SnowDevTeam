@@ -107,6 +107,29 @@ Anything else — `sys_db_object` (new table), `sys_hub_flow` and `sys_hub_*`
 (the Fluent flow/app tier, the Build Agent, or a human). Do not try to work
 around a denial.
 
+## Don't rebuild what ServiceNow already does
+
+The Architect's `## Decision` table is the scope — build exactly those records,
+nothing more. In particular, the platform **already** provides, for free:
+
+- **Notifications** — "Approval Requested" (to the approver), "Request Approved",
+  "Request Rejected", task "Assigned to", task closed, RITM state changes,
+  comments added. **Do not add a `sysevent_email_action`** for any of these
+  unless the Architect's Decision table has a row for it with a reason OOB
+  doesn't fit.
+- **The approval itself** — submitting a catalog item with an approval runs the
+  OOB approval engine. You usually need **zero** records for a single group /
+  manager approval; a business rule is only for extra server-side behaviour the
+  approval can't express.
+- **Catalog security** — visibility is `sc_cat_item` roles / User Criteria; the
+  approval record already restricts approve/reject to the approver. Add a
+  `sys_security_acl` only for a genuinely new rule the Decision table names.
+- **The fulfilment work item** — a Catalog Task (`sc_task`) is OOB; it inherits
+  the RITM's variables and has its own assignment + notifications.
+
+If you find yourself adding a notification / ACL / business rule the Architect
+didn't specify, stop — that's the over-build this whole tier exists to avoid.
+
 ## Script files — the lint rules (these fail `validate_plan`)
 
 Script bodies (`sys_script`, `sys_script_include`, `sys_ui_action`,

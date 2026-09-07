@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ARTIFACT_META, ARTIFACT_TAB_ORDER, ROLE_META, durationLabel } from "@/lib/ui";
 import type { ArtifactJson, StepJson } from "@/lib/types";
 import { Markdown } from "@/components/Markdown";
+import { extractTldr } from "@/lib/pipeline/parse";
 
 export function ArtifactTabs({
   artifacts,
@@ -97,6 +98,16 @@ export function ArtifactTabs({
               dev instance, in one update set.
             </p>
           )}
+          {(() => {
+            const tldr = extractTldr(active.content);
+            return tldr.length > 0 ? (
+              <ul className="art-tldr">
+                {tldr.map((b, i) => (
+                  <li key={i}>{b}</li>
+                ))}
+              </ul>
+            ) : null;
+          })()}
           <Markdown source={active.content} />
         </div>
       )}
