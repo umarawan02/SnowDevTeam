@@ -23,8 +23,11 @@ const GROUP_ORDER: { label: string; tables: string[] }[] = [
   { label: "Scheduled jobs", tables: ["sysauto_script"] },
   { label: "Fields & choices", tables: ["sys_dictionary", "sys_choice"] },
   { label: "Forms", tables: ["sys_ui_form", "sys_ui_section", "sys_ui_element"] },
-  { label: "ATF", tables: ["sys_atf_test", "sys_atf_step", "sys_atf_test_suite", "sys_atf_test_suite_test"] },
+  { label: "ATF", tables: ["sys_atf_test", "sys_atf_test_suite"] },
 ];
+
+/** Rows for these tables are counted, not listed one by one (child records). */
+const CHILD_TABLES = new Set(["sys_atf_step", "sys_atf_test_suite_test", "catalog_ui_policy_action", "sys_ui_policy_action", "sys_security_acl_role", "io_set_item"]);
 
 function recordLabel(plan: ChangePlan, changeId: string, table: string): string {
   const c = plan.changes.find((x) => x.id === changeId);
@@ -35,6 +38,7 @@ function recordLabel(plan: ChangePlan, changeId: string, table: string): string 
     pick("title") ??
     pick("question_text") ??
     pick("short_description") ??
+    pick("description") ??
     pick("event_name") ??
     `${ALLOWED[table]?.label ?? table} (${changeId})`
   );
@@ -63,6 +67,8 @@ export function deliverySummaryMarkdown(opts: {
   ];
 
   const seen = new Set<string>();
+  applied.filter((a) => CHILD_TABLES.has(a.table)).forEach((a) => seen.add(a.sysId));
+
   for (const g of GROUP_ORDER) {
     const rows = applied.filter((a) => g.tables.includes(a.table));
     if (rows.length === 0) continue;
@@ -71,6 +77,11 @@ export function deliverySummaryMarkdown(opts: {
       seen.add(r.sysId);
       const name = recordLabel(plan, r.changeId, r.table);
       lines.push(`- [${name}](${deepLink(instanceUrl, r.table, r.sysId)}) — \`${r.table}\` · ${r.operation}`);
+    }
+    if (g.label === "ATF") {
+      const steps = applied.filter((a) => a.table === "sys_atf_step").length;
+      const links = applied.filter((a) => a.table === "sys_atf_test_suite_test").length;
+      if (steps || links) lines.push(`- _(+ ${steps} step(s), ${links} suite link(s))_`);
     }
     lines.push("");
   }
