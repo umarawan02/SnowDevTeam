@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ticketStatusMeta, roleMeta, isTerminal, relativeTime, scopeLabel, tierMeta } from "@/lib/ui";
-import { parseQaVerdict, parseReworkFrom } from "@/lib/pipeline/parse";
+import { parseQaVerdict, parseReworkFrom, extractTldr } from "@/lib/pipeline/parse";
 import type { TicketDetailJson, PersonaJson } from "@/lib/types";
+import { Markdown } from "@/components/Markdown";
 import { PipelineFlow } from "@/components/ticket/PipelineFlow";
 import { BuiltFlowDiagram } from "@/components/ticket/BuiltFlowDiagram";
 import { ArtifactTabs } from "@/components/ArtifactTabs";
@@ -62,6 +63,17 @@ export function TicketDetail({
   const isNative = !!ticket.executionTier?.startsWith("NATIVE");
   const hasPreviewProblems = ticket.artifacts.some((a) => a.type === "PREVIEW_PROBLEMS");
   const flowSpec = latest("DESIGN");
+  const deliverySummary = latest("DELIVERY_SUMMARY");
+
+  // Overview: the one-glance summary.
+  const designTldr = extractTldr(latest("DESIGN")?.content ?? "");
+  const buildsLine = summariseBuild(latest("CHANGE_PLAN")?.content, deliverySummary?.content);
+  const overviewBullets = [
+    buildsLine && `**Builds:** ${buildsLine}`,
+    designTldr[0] && `**Design:** ${designTldr[0]}`,
+    verdict && `**QA:** ${verdict === "READY_FOR_HUMAN_REVIEW" ? "ready for human review" : "needs rework"}`,
+  ].filter(Boolean) as string[];
+  const showOverview = overviewBullets.length > 1 && !failedStep;
 
   async function resumePipeline() {
     setResuming(true);
@@ -112,6 +124,25 @@ export function TicketDetail({
         </div>
         <p className="td-req">&ldquo;{ticket.description}&rdquo;</p>
       </header>
+
+      {showOverview && (
+        <section className="glass panel td-overview">
+          <h3>Overview</h3>
+          <ul>
+            {overviewBullets.map((b, i) => (
+              <li key={i}>
+                <Markdown source={b} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {deliverySummary && (ticket.status === "DEPLOYED" || !!ticket.nativeDeployment) && (
+        <section className="glass panel td-delivered">
+          <Markdown source={deliverySummary.content} />
+        </section>
+      )}
 
       <section className="glass panel td-pipeline">
         <header>
@@ -257,4 +288,42 @@ export function TicketDetail({
 
 function cap(s: string) {
   return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+const KIND_LABEL: Record<string, string> = {
+  sc_cat_item: "catalog item",
+  item_option_new: "variable",
+  catalog_ui_policy: "UI policy",
+  catalog_script_client: "client script",
+  sys_script: "business rule",
+  sys_script_include: "script include",
+  sysevent_email_action: "notification",
+  sys_security_acl: "ACL",
+  contract_sla: "SLA",
+  sys_atf_test: "ATF test",
+  sys_atf_test_suite: "ATF suite",
+};
+
+/** "1 catalog item, 3 variables, 1 business rule, 3 notifications, ATF" — from the plan. */
+function summariseBuild(changePlanJson: string | undefined, deliveryMd: string | undefined): string | null {
+  if (deliveryMd) {
+    const m = deliveryMd.match(/^#\s*Delivered\s*—\s*(\d+)\s*record/im);
+    if (m) return `${m[1]} record${m[1] === "1" ? "" : "s"} — see the Delivered tab`;
+  }
+  if (!changePlanJson) return null;
+  try {
+    const plan = JSON.parse(changePlanJson) as { changes?: { table: string }[] };
+    const counts = new Map<string, number>();
+    for (const c of plan.changes ?? []) counts.set(c.table, (counts.get(c.table) ?? 0) + 1);
+    const parts: string[] = [];
+    for (const [table, n] of counts) {
+      if (table.startsWith("sys_atf")) continue;
+      const label = KIND_LABEL[table] ?? table;
+      parts.push(n === 1 ? `1 ${label}` : `${n} ${label}${label.endsWith("y") ? "" : "s"}`);
+    }
+    if ([...counts.keys()].some((t) => t.startsWith("sys_atf"))) parts.push("ATF tests");
+    return parts.join(", ") || null;
+  } catch {
+    return null;
+  }
 }

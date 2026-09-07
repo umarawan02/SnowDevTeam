@@ -71,7 +71,8 @@ const NEW_APP_RE =
   /\bnew (scoped |custom |standalone )?app(lication)?\b|\bgreenfield app\b|\bits own scope\b|\bseparate scoped application\b|\bbuild .{0,40}\bas an? (new )?application\b/i;
 
 /** The request implies a Flow Designer flow. */
-const FLOW_RE = /\bflow designer\b|\bsubflow\b|\borchestrat\w*\b|\bmulti[- ]step (approval|workflow)\b|\bflow\b/i;
+const FLOW_RE =
+  /\bflow designer\b|\bsubflow\b|\borchestrat\w*\b|\bmulti[- ]?step (approval|workflow|fulfil)\w*\b|\bapproval workflow\b|\bfulfil?ment (workflow|orchestrat)\w*\b|\broutes? (through|to) .{0,40}\bthen\b|\bflow\b/i;
 /** Wording that says an existing flow already does the job. */
 const FLOW_REUSE_RE = /\bexisting flow\b|\balready has a flow\b|\breuse the .{0,30}flow\b|\bhook (into|onto) the .{0,30}flow\b/i;
 const FLOW_EXTEND_RE = /\bextend the .{0,30}flow\b|\badditional (business rule|logic) (on top|alongside)\b/i;
@@ -329,6 +330,27 @@ export const ROUTE_RANK: Record<RouteTier, number> = {
 
 export function isRouteTier(v: string): v is RouteTier {
   return v in ROUTE_RANK;
+}
+
+/**
+ * True when an Architect's ADR describes a **net-new** Flow Designer flow — the
+ * native engine cannot author `sys_hub_flow`, so such a ticket must be routed to
+ * the Fluent flow tier (NATIVE_ENGINE_BRIEF §6.3). Ignores "reuse an existing
+ * flow" language.
+ */
+export function designNeedsNetNewFlow(designText: string): boolean {
+  const t = designText.toLowerCase();
+  // A net-new flow: a create/net-new verb within ~60 chars of "flow" / "sys_hub_flow",
+  // or a "## Flow Design" section that isn't explicitly about reuse.
+  const netNew =
+    /\b(net-new|new|create|build|author|add)\b[^.\n]{0,60}\b(sys_hub_flow|flow designer flow|fulfil?ment flow|approval flow|subflow)\b/i.test(t) ||
+    /\b(sys_hub_flow|flow designer flow|fulfil?ment flow)\b[^.\n]{0,60}\b(net-new|created? by this|to be built)\b/i.test(t);
+  if (!netNew) return false;
+  // Suppress when the only flow work is reuse / linking to an existing flow.
+  const reuseOnly =
+    /\breuse (the |an )?(existing )?(sub)?flow\b|\blink (the item|it) (to|into) the (existing )?flow\b/i.test(t) &&
+    !/\bcreate\b[^.\n]{0,40}\bflow\b|\bnet-new\b[^.\n]{0,40}\bflow\b/i.test(t);
+  return !reuseOnly;
 }
 
 /**

@@ -38,15 +38,22 @@ const ROLE_PROMPT_FILE: Record<AgentRole, string> = {
   QA: "qa.md",
 };
 
-/** The Developer's native-tier prompt replaces developer.md entirely. */
-const DEVELOPER_NATIVE = read("developer-native.md");
+/** Native-tier role bodies that fully replace the Fluent .md (NATIVE_ENGINE_BRIEF §7 / Phase 8). */
+const NATIVE_ROLE_FILE: Partial<Record<AgentRole, string>> = {
+  ARCHITECT: "architect-native.md",
+  SENIOR_DEV: "senior-developer-native.md",
+  DEVELOPER: "developer-native.md",
+};
+const NATIVE_ROLE_BODY = Object.fromEntries(
+  Object.entries(NATIVE_ROLE_FILE).map(([r, f]) => [r, read(f)]),
+) as Partial<Record<AgentRole, string>>;
 
 // Architect / Senior Dev / Developer get a grounding appendix; the flavour
 // depends on the ticket's tier (native vs Fluent).
 const ROLES_WITH_GROUNDING: ReadonlySet<AgentRole> = new Set(["ARCHITECT", "SENIOR_DEV", "DEVELOPER"]);
 
 function compose(role: AgentRole, native: boolean): string {
-  const rolePrompt = role === "DEVELOPER" && native ? DEVELOPER_NATIVE : read(ROLE_PROMPT_FILE[role]);
+  const rolePrompt = (native && NATIVE_ROLE_BODY[role]) || read(ROLE_PROMPT_FILE[role]);
   if (!ROLES_WITH_GROUNDING.has(role)) return rolePrompt;
   const grounding = native ? GROUNDING_NATIVE : GROUNDING_FLUENT;
   return `${rolePrompt}\n\n---\n\n# Appendix: ${grounding}`;

@@ -84,6 +84,8 @@ export const ARTIFACT_TYPE = {
   PREVIEW_PROBLEMS: "PREVIEW_PROBLEMS",
   ATF_RESULTS: "ATF_RESULTS",
   INSTANCE_SCAN: "INSTANCE_SCAN",
+  // Phase 8: the human-readable "what was built and deployed" list.
+  DELIVERY_SUMMARY: "DELIVERY_SUMMARY",
 } as const;
 export type ArtifactType = (typeof ARTIFACT_TYPE)[keyof typeof ARTIFACT_TYPE];
 

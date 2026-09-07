@@ -8,7 +8,7 @@
  * the instance probes (§6.1) are exercised separately against a real PDI.
  */
 import "@/lib/config";
-import { routeTicket, evalRouteOverride, type RouteInput, type RouteTier } from "@/lib/pipeline/route";
+import { routeTicket, evalRouteOverride, designNeedsNetNewFlow, type RouteInput, type RouteTier } from "@/lib/pipeline/route";
 
 const DEMO_APPS = [{ scope: "x_acme_onboard", name: "Acme Onboarding" }];
 
@@ -120,6 +120,21 @@ async function main() {
     const bad = r.tier === "FLUENT_SCOPED_APP";
     console.log(`${bad ? "✗" : "✓"}  ${r.tier.padEnd(16)} ${text}`);
     if (bad) failures++;
+  }
+
+  console.log("\n— designNeedsNetNewFlow (Phase 8) —");
+  const flowCases: [string, boolean, string][] = [
+    ["The ADR proposes a net-new sys_hub_flow 'Enhancement Fulfilment' to orchestrate approval then task creation.", true, "net-new sys_hub_flow"],
+    ["## Flow Design\nCreate a new fulfilment flow: trigger on RITM, ask for approval, then create a catalog task.", true, "create a new fulfilment flow"],
+    ["Reuse the existing 'Standard hardware' flow — just link the item to it. No new flow.", false, "reuse only"],
+    ["Fulfilment: the OOB catalog approval runs, then a Catalog Task is created. No flow needed.", false, "no flow"],
+    ["A business rule on sc_req_item sets the assignment group. No flow.", false, "business rule, no flow"],
+  ];
+  for (const [text, want, label] of flowCases) {
+    const got = designNeedsNetNewFlow(text);
+    const ok = got === want;
+    console.log(`${ok ? "✓" : "✗"}  ${label}${ok ? "" : `  — got ${got}, want ${want}`}`);
+    if (!ok) failures++;
   }
 
   console.log("\n— Architect ROUTE_OVERRIDE (tighten only) —");

@@ -197,7 +197,9 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
       scopeSection(ctx) +
       priorArtifact(ctx, ARTIFACT_TYPE.REQUIREMENTS, "Requirements (from the Business Analyst)") +
       reworkSection(ctx) +
-      `\nProduce the solution design (ADR) now. Inventory the instance with \`query\` for OOB / existing records before designing anything custom, and confirm Fluent syntax with \`explain\`. The standard catalog-item + approval + fulfillment pattern is already in the Appendix — do **not** research it. The ADR must include the "Implementation guidance for the build team" section.`,
+      (ctx.native
+        ? `\nProduce the ADR now. \`query\` the instance for existing catalog / category / group records first, and lead with the OOB baseline — the catalog request + approval + task process and its OOB notifications need **zero** records. Every net-new record needs a rejected-OOB-alternative rationale in the Decision table. If the fulfilment needs a Flow Designer flow, emit \`ROUTE_OVERRIDE: FLUENT_FLOW\` and stop — do not design a \`sys_hub_flow\`.`
+        : `\nProduce the solution design (ADR) now. Inventory the instance with \`query\` for OOB / existing records before designing anything custom, and confirm Fluent syntax with \`explain\`. The standard catalog-item + approval + fulfillment pattern is already in the Appendix — do **not** research it. The ADR must include the "Implementation guidance for the build team" section.`),
   },
 
   SENIOR_DEV: {
@@ -217,7 +219,9 @@ export const ROLE_CONFIG: Record<AgentRole, RoleConfig> = {
       priorArtifact(ctx, ARTIFACT_TYPE.REQUIREMENTS, "Requirements (from the Business Analyst)") +
       priorArtifact(ctx, ARTIFACT_TYPE.DESIGN, "Solution Design (from the Architect)") +
       reworkSection(ctx) +
-      `\nProduce the implementation plan, file plan, and review checklist now. Follow the Architect's "Implementation guidance for the build team" exactly.`,
+      (ctx.native
+        ? `\nProduce the change list, script list, and 5-point review checklist now. Every change maps to a row in the Architect's Decision table — do not add a record the Architect didn't ask for.`
+        : `\nProduce the implementation plan, file plan, and review checklist now. Follow the Architect's "Implementation guidance for the build team" exactly.`),
   },
 
   DEVELOPER: {

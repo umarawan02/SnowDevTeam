@@ -131,6 +131,36 @@ export function lintPlan(
         });
       }
     }
+
+    // over-build: a custom notification that looks like an OOB one (Phase 8)
+    if (c.table === "sysevent_email_action") {
+      const collection = String(c.fields.collection ?? "");
+      const label = `${c.fields.name ?? ""} ${c.fields.subject ?? ""}`.toLowerCase();
+      if (
+        ["sc_req_item", "sysapproval_approver", "sc_task", "sc_request"].includes(collection) &&
+        /\b(approv|reject|assigned|submitted|complete|closed)\b/.test(label)
+      ) {
+        findings.push({
+          severity: "warning",
+          rule: "oob-notification",
+          message: `"${c.fields.name}" on ${collection} looks like an OOB notification (approval/assignment/state) — confirm it isn't a duplicate; the Architect's Decision table must justify a custom one`,
+          where: c.id,
+        });
+      }
+    }
+
+    // over-build: a custom ACL on a catalog/approval table
+    if (c.table === "sys_security_acl") {
+      const nameField = String(c.fields.name ?? "");
+      if (/^(sc_cat_item|sysapproval_approver|sc_req_item|sc_request)\b/.test(nameField)) {
+        findings.push({
+          severity: "warning",
+          rule: "oob-acl",
+          message: `ACL on "${nameField}" — catalog visibility (roles / user criteria) and approval-record access are OOB; confirm this rule is genuinely new`,
+          where: c.id,
+        });
+      }
+    }
   }
   return findings;
 }

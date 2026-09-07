@@ -16,6 +16,7 @@ import { isLookup, isRef, orderChanges, type Change, type ChangePlan, type Field
 import { resolveScripts } from "@/lib/nativeengine/scripts";
 import { ALLOWED } from "@/lib/nativeengine/tables";
 import { verifyNativeRecords } from "@/lib/servicenow/verify";
+import { deliverySummaryMarkdown } from "@/lib/nativeengine/delivery";
 
 /**
  * Apply a change plan to a dev instance (NATIVE_ENGINE_BRIEF §5.1). The ordered
@@ -248,6 +249,21 @@ export async function applyChangePlan(opts: ApplyOpts): Promise<ApplyResult> {
     if (!verification.confirmed) {
       return fail(`records applied but verification failed: ${verification.reason}`);
     }
+
+    // The human-readable "what was built" list (Phase 8).
+    await upsertArtifact(
+      ticketId,
+      ARTIFACT_TYPE.DELIVERY_SUMMARY,
+      deliverySummaryMarkdown({
+        plan,
+        applied,
+        instanceName: instance.name,
+        instanceUrl: instance.url,
+        updateSetName: us.name,
+        updateSetSysId: us.sysId,
+        scope: opts.plan.scope,
+      }),
+    );
 
     // 11. persist + log
     await prisma.nativeDeployment.update({

@@ -17,7 +17,8 @@ import {
 import { buildProject, relocateIntoTicketDir, withProjectLock } from "@/lib/nowsdk/workspace";
 import { commitAll, discardTree, resetTicketBranch } from "@/lib/git/repo";
 import { toProjectContext } from "@/lib/projects/resolve";
-import { isNativeTier, evalRouteOverride, type RouteTier } from "@/lib/pipeline/route";
+import { isNativeTier, evalRouteOverride, designNeedsNetNewFlow, type RouteTier } from "@/lib/pipeline/route";
+import { resolveProjectForTicket } from "@/lib/projects/resolve";
 import type { Instance } from "@prisma/client";
 import { buildProjectContext } from "@/lib/agents/project-context";
 import { nativeTicketDir, writeScriptFiles } from "@/lib/nativeengine/scripts";
@@ -31,6 +32,9 @@ export interface PipelineResult {
   ticketId: string;
   failedRole?: string;
   error?: string;
+  /** Set when the route changed mid-run and the whole pipeline must re-run
+   *  under the new tier (native → Fluent flow). */
+  restart?: boolean;
 }
 
 /** Auto rework rounds the pipeline will run itself before handing to the human. */
@@ -200,6 +204,18 @@ async function runPlanGate(ticketId: string, ctx: PipelineContext): Promise<{ ok
   const scriptsDir = ctx.nativeScriptsDir;
   if (!scriptsDir) return { ok: false, log: "no native scripts dir on the context" };
 
+  // Belt-and-braces: the ADR describes a net-new flow but we're still native and
+  // the plan has no flow. The Architect must route it (ROUTE_OVERRIDE:
+  // FLUENT_FLOW) — a native plan cannot silently drop the flow.
+  if (designNeedsNetNewFlow(ctx.artifacts[ARTIFACT_TYPE.DESIGN] ?? "")) {
+    const log =
+      "# Build (native) — FAILED\n\nThe design describes a **net-new Flow Designer flow**, which the native " +
+      "engine cannot build. The Architect must emit `ROUTE_OVERRIDE: FLUENT_FLOW` (or design the fulfilment " +
+      "without a flow, using OOB approval + a business rule).";
+    await upsertArtifact(ticketId, ARTIFACT_TYPE.BUILD_LOG, log);
+    return { ok: false, log };
+  }
+
   for (let attempt = 0; attempt <= MAX_PLAN_FIX; attempt++) {
     const parsed = parseNativePlan(ctx.artifacts[ARTIFACT_TYPE.CODE] ?? "");
     let ok = false;
@@ -286,30 +302,54 @@ async function applyRouteOverride(
   architectText: string,
 ): Promise<{ stop?: PipelineResult } | null> {
   const current = ctx.route?.tier ?? "NATIVE_GLOBAL";
-  const verdict = evalRouteOverride(architectText, current);
-  if (!verdict) return null;
-  if ("ignored" in verdict) {
-    console.warn(`[route] Architect ROUTE_OVERRIDE ignored — ${verdict.ignored}`);
-    return null;
-  }
-  const want: RouteTier = verdict.tier;
+  let want: RouteTier | null = null;
 
-  const rationale = `Route tightened by the Architect: ${current} → ${want}. ${architectText.slice(0, 800)}`;
+  const verdict = evalRouteOverride(architectText, current);
+  if (verdict && "ignored" in verdict) {
+    console.warn(`[route] Architect ROUTE_OVERRIDE ignored — ${verdict.ignored}`);
+  } else if (verdict) {
+    want = verdict.tier;
+  } else if (isNativeTier(current) && designNeedsNetNewFlow(ctx.artifacts[ARTIFACT_TYPE.DESIGN] ?? architectText)) {
+    // Safety net: the Architect designed a net-new flow but didn't route it.
+    // The native engine can't build a flow — send it to the flow tier.
+    console.warn(`[route] native ADR describes a net-new flow with no ROUTE_OVERRIDE — auto-routing to FLUENT_FLOW`);
+    want = "FLUENT_FLOW";
+  }
+  if (!want) return null;
+
+  const reason = verdict ? "the Architect" : "the pipeline (a net-new flow was designed)";
   await prisma.ticket.update({
     where: { id: ticketId },
-    data: { executionTier: want, tierRationale: `Architect override: ${current} → ${want}` },
+    data: { executionTier: want, tierRationale: `Route ${current} → ${want} by ${reason}.` },
   });
   ctx.route = { ...(ctx.route ?? { scope: "", rationale: "" }), tier: want };
   ctx.native = isNativeTier(want);
 
+  await upsertArtifact(
+    ticketId,
+    ARTIFACT_TYPE.DESIGN,
+    `# Routing\n\n**${current} → ${want}** — ${reason}.\n\n---\n\n${architectText}`,
+  );
+
   if (want === "NOT_SUPPORTED") {
-    await upsertArtifact(ticketId, ARTIFACT_TYPE.DESIGN, `# Route: NOT_SUPPORTED\n\n${rationale}`);
     await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.FAILED } });
     return { stop: { ok: false, ticketId, error: `routed NOT_SUPPORTED by the Architect` } };
   }
+
   if (want === "FLUENT_FLOW" || want === "FLUENT_SCOPED_APP") {
+    const customer = await prisma.ticket
+      .findUnique({ where: { id: ticketId }, select: { customerId: true, customer: { select: { allowFluentFlows: true } } } });
+    const canFluent = want === "FLUENT_FLOW" && customer?.customer?.allowFluentFlows && customer.customerId;
+    if (canFluent) {
+      // Re-run the whole pipeline as a Fluent flow ticket.
+      const proj = await resolveProjectForTicket({ customerId: customer.customerId!, kind: "global" }).catch(() => null);
+      if (proj) {
+        await prisma.ticket.update({ where: { id: ticketId }, data: { projectId: proj.id, status: TICKET_STATUS.RUNNING } });
+        await resetFrom(ticketId, 0);
+        return { stop: { ok: true, ticketId, restart: true } };
+      }
+    }
     await prisma.ticket.update({ where: { id: ticketId }, data: { status: TICKET_STATUS.AWAITING_FLOW } });
-    await upsertArtifact(ticketId, ARTIFACT_TYPE.DESIGN, `# Route: ${want} — awaiting a human\n\n${rationale}`);
     return { stop: { ok: true, ticketId } };
   }
   return null;
@@ -544,6 +584,11 @@ export async function runPipeline(
 
   try {
     const first = await runStages(ticketId, ctx, 0, QA_ORDER, skipCompleted, ticket.artifacts);
+    if (first.restart) {
+      // The route changed mid-run (native → Fluent flow) — re-run from scratch
+      // under the new tier. resetFrom(0) already cleared the steps/artifacts.
+      return runPipeline(ticketId, { resume: true });
+    }
     if (!first.ok) return first;
 
     const rework = await autoReworkLoop(ticketId, ctx, ticket.reworkRound);
